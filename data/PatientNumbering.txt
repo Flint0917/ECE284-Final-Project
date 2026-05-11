@@ -1,0 +1,25 @@
+Author: Alexandar R. Todorov, University of Southampton 0000-0002-6126-753X
+
+Related projects:
+EP/T517859/1
+
+Patient Mapping for Publication: "Wearable Sensor System for Monitoring Atopic Dermatitis in Patients"
+
+Data was collected as part of the NOMAD study, ethics approval: NRES 330915.
+Data collected followed the naming of patient ID numbers. In the publication these patient ID numbers were replaced:
+The following is the mapping convention:
+
+Patient Number in Paper // Patient ID in Study
+1 // S-02
+2 // S-03 
+3 // S-04
+4 // S-05
+5 // S-06
+6 // S-07
+7 // S-08
+8 // S-09
+9 // S-10
+10 // S-11
+11 // S-12
+12 // S-18
+13 // S-19
