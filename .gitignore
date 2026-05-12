@@ -81,6 +81,12 @@ Thumbs.db
 *.zip
 *.tar.gz
 
+# Claude workspace metadata
+.claude
+
+# Original raw dataset (from WearSystemIDCforAD repo)
+WearSystemIDCforAD/
+
 # Local test outputs (if needed)
 .tmp/
 temp/
