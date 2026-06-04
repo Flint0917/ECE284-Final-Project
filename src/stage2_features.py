@@ -1,10 +1,10 @@
 """
-Stage 3: Feature Extraction and Importance
+Stage 2: Feature Extraction and Importance
 
 Extracts 6 hand-crafted features from each raw trace and
 ranks them by Random Forest feature importance (mean decrease in impurity).
 
-Output: results/stage3_features.png — two-panel figure:
+Output: results/stage2_features.png — two-panel figure:
   Left:  Feature importance bar chart (Random Forest, all 26 samples)
   Right: Heatmap of raw-derived feature values per trace (standardized for display),
          rows ordered by patient number, y-axis labels coloured by label.
@@ -173,9 +173,9 @@ patches = [
 ax_hm.legend(handles=patches, fontsize=10, loc="upper right",
              bbox_to_anchor=(1.42, 1.0))
 
-plt.suptitle("Stage 3 — Feature Extraction (raw traces)",
+plt.suptitle("Stage 2 — Feature Extraction (raw traces)",
              fontsize=14, fontweight="bold", y=1.01)
 
-out = RESULTS / "stage3_features.png"
+out = RESULTS / "stage2_features.png"
 plt.savefig(out, dpi=150, bbox_inches="tight")
 print(f"\nSaved → {out}")

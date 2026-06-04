@@ -1,0 +1,3 @@
+method,normalization,acc_mean,acc_std,f1_mean,f1_std,auc_mean,auc_std
+LOSO,training-only patient baseline normalization,0.6538,0.2308,0.4615,0.4441,1.0,0.0
+GroupKFold,training-only patient baseline normalization,0.7,0.113,0.6514,0.1458,0.8167,0.0923
