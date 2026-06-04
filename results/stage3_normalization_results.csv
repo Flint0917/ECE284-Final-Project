@@ -1,0 +1,6 @@
+normalization,loso_acc_mean,loso_acc_std,loso_f1_mean,loso_f1_std,loso_rank_mean,loso_rank_std,loso_pooled_auc,gkf_acc_mean,gkf_acc_std,gkf_f1_mean,gkf_f1_std,gkf_auc_mean,gkf_auc_std
+trace z-score,0.5385,0.2371,0.4103,0.3956,0.7692,0.4213,0.6154,0.5833,0.1054,0.57,0.172,0.6111,0.1988
+trace min-max,0.4615,0.3077,0.3077,0.4022,0.4615,0.4985,0.3787,0.4333,0.178,0.381,0.2313,0.5167,0.1379
+feature z-score,0.7692,0.2493,0.7436,0.3497,0.8462,0.3608,0.7811,0.75,0.1667,0.7348,0.2011,0.8222,0.2061
+robust scaler,0.7692,0.2493,0.7436,0.3497,0.8462,0.3608,0.7929,0.75,0.1667,0.7348,0.2011,0.8222,0.2061
+training-only patient baseline normalization,0.6538,0.2308,0.4615,0.4441,1.0,0.0,0.7751,0.7,0.113,0.6514,0.1458,0.8167,0.0923
