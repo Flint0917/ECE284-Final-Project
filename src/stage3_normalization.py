@@ -263,6 +263,7 @@ METHODS = [
     "training-only patient baseline normalization",
 ]
 results = {}
+fold_data = {}   # per-fold value lists, kept for the box plots
 
 for method in METHODS:
     # LOSO: keep accuracy/F1 and the (degenerate) per-fold AUC = pairwise ranking,
@@ -271,6 +272,10 @@ for method in METHODS:
     # GroupKFold: 4-6 samples per fold -> per-fold AUC is a real, graded AUC.
     gkf_acc, gkf_f1, gkf_auc, _ = run_cv(method, gkf)
 
+    fold_data[method] = {
+        "loso_acc": loso_acc, "loso_rank": loso_rank,
+        "gkf_auc": gkf_auc, "pooled_loso_auc": loso_pooled_auc,
+    }
     results[method] = {
         "loso_acc_mean": np.mean(loso_acc), "loso_acc_std": np.std(loso_acc),
         "loso_f1_mean": np.mean(loso_f1), "loso_f1_std": np.std(loso_f1),
@@ -308,7 +313,9 @@ pd.DataFrame([
 ]).to_csv(RESULTS / "stage3_normalization_results.csv", index=False)
 
 # ---------------------------------------------------------------------------
-# Figure: (A) threshold accuracy LOSO vs GroupKFold, (B) three AUC estimates
+# Figure: box plots over folds (bar+error-bar hides the wide fold spread).
+#   (A) LOSO per-fold accuracy distribution (13 folds/method)
+#   (B) GroupKFold per-fold AUC distribution (5 folds/method) + pooled-LOSO marker
 # ---------------------------------------------------------------------------
 SHORT = {
     "trace z-score": "trace\nz-score",
@@ -318,50 +325,50 @@ SHORT = {
     "training-only patient baseline normalization": "patient\nbaseline",
 }
 xt = [SHORT[m] for m in METHODS]
-x = np.arange(len(METHODS))
+pos = np.arange(len(METHODS))
+jit = np.random.RandomState(0)   # reproducible point jitter
+
+
+def _boxplot(ax, data, facecolor):
+    bp = ax.boxplot(data, positions=pos, widths=0.55, patch_artist=True,
+                    medianprops=dict(color="black", linewidth=1.4),
+                    flierprops=dict(marker="", markersize=0))
+    for patch in bp["boxes"]:
+        patch.set_facecolor(facecolor)
+        patch.set_alpha(0.55)
+    for i, vals in enumerate(data):       # overlay individual fold points
+        xj = np.full(len(vals), i) + (jit.rand(len(vals)) - 0.5) * 0.18
+        ax.scatter(xj, vals, s=18, color="#333333", alpha=0.65, zorder=3)
+
 
 fig, (axA, axB) = plt.subplots(1, 2, figsize=(15, 6))
 
-# ---- Panel A: threshold accuracy under the two CV schemes ------------------
-wA = 0.38
-axA.bar(x - wA / 2, [results[m]["loso_acc_mean"] for m in METHODS], wA,
-        yerr=[results[m]["loso_acc_std"] for m in METHODS],
-        label="LOSO accuracy", color="#f14040", capsize=4, alpha=0.85,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
-axA.bar(x + wA / 2, [results[m]["gkf_acc_mean"] for m in METHODS], wA,
-        yerr=[results[m]["gkf_acc_std"] for m in METHODS],
-        label="GroupKFold (n=5) accuracy", color="#1a6fdf", capsize=4, alpha=0.85,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
+# ---- Panel A: LOSO per-fold accuracy distribution --------------------------
+_boxplot(axA, [fold_data[m]["loso_acc"] for m in METHODS], "#f14040")
 axA.axhline(0.5, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
-axA.set_xticks(x); axA.set_xticklabels(xt, fontsize=10)
-axA.set_ylim(0, 1.15)
-axA.set_ylabel("Accuracy", fontsize=12, fontweight="bold")
-axA.set_title("Threshold accuracy: LOSO vs GroupKFold", fontsize=12, fontweight="bold")
-axA.legend(fontsize=9, loc="upper right")
+axA.set_xticks(pos); axA.set_xticklabels(xt, fontsize=10)
+axA.set_ylim(-0.05, 1.1)
+axA.set_ylabel("LOSO per-fold accuracy", fontsize=12, fontweight="bold")
+axA.set_title("LOSO accuracy distribution (13 folds)\nbar+error-bar would hide this spread",
+              fontsize=12, fontweight="bold")
 axA.grid(True, axis="y", linestyle="--", alpha=0.4)
 
-# ---- Panel B: three AUC estimates ------------------------------------------
-wB = 0.27
-axB.bar(x - wB, [results[m]["loso_rank_mean"] for m in METHODS], wB,
-        yerr=[results[m]["loso_rank_std"] for m in METHODS],
-        label="LOSO per-fold AUC (pairwise ranking, degenerate)",
-        color="#bdbdbd", capsize=4,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
-axB.bar(x, [results[m]["loso_pooled_auc"] for m in METHODS], wB,
-        label="pooled-LOSO AUC (26 scores)", color="#f0a030")
-axB.bar(x + wB, [results[m]["gkf_auc_mean"] for m in METHODS], wB,
-        yerr=[results[m]["gkf_auc_std"] for m in METHODS],
-        label="GroupKFold AUC (headline)", color="#37ad6b", capsize=4,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
+# ---- Panel B: GroupKFold per-fold AUC distribution + pooled-LOSO ------------
+_boxplot(axB, [fold_data[m]["gkf_auc"] for m in METHODS], "#37ad6b")
+for i, m in enumerate(METHODS):          # pooled-LOSO AUC as a diamond marker
+    axB.scatter(i, fold_data[m]["pooled_loso_auc"], marker="D", s=70, zorder=4,
+                color="#f0a030", edgecolor="black", linewidth=0.8,
+                label="pooled-LOSO AUC" if i == 0 else None)
 axB.axhline(0.5, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
-axB.set_xticks(x); axB.set_xticklabels(xt, fontsize=10)
-axB.set_ylim(0, 1.15)
+axB.set_xticks(pos); axB.set_xticklabels(xt, fontsize=10)
+axB.set_ylim(-0.05, 1.1)
 axB.set_ylabel("AUC-ROC", fontsize=12, fontweight="bold")
-axB.set_title("Discriminability: three AUC estimates", fontsize=12, fontweight="bold")
-axB.legend(fontsize=8.5, loc="lower center")
+axB.set_title("GroupKFold AUC distribution (5 folds) + pooled-LOSO AUC (◆)",
+              fontsize=12, fontweight="bold")
+axB.legend(fontsize=9, loc="lower center")
 axB.grid(True, axis="y", linestyle="--", alpha=0.4)
 
-plt.suptitle("Stage 3 - Normalization Comparison (LinearSVC; LOSO + GroupKFold + pooled-LOSO)",
+plt.suptitle("Stage 3 - Normalization Comparison (LinearSVC; per-fold distributions)",
              fontsize=13, fontweight="bold", y=1.02)
 plt.tight_layout()
 

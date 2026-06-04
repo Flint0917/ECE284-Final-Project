@@ -38,7 +38,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import skew
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, roc_curve
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
@@ -209,6 +209,7 @@ groups = df["patient"].values
 logo = LeaveOneGroupOut()
 
 loso_accs, loso_f1s, loso_aucs = [], [], []
+loso_pooled_scores, loso_pooled_labels = [], []   # for the pooled-LOSO ROC curve
 per_patient_rows = []
 baseline_log_rows = []
 
@@ -231,6 +232,8 @@ for fold_id, (train_idx, test_idx) in enumerate(logo.split(X_traces, y, groups),
     loso_accs.append(fold_acc)
     loso_f1s.append(f1_score(y_te, y_pred, zero_division=0))
     loso_aucs.append(roc_auc_score(y_te, y_score))
+    loso_pooled_scores.extend(y_score.tolist())
+    loso_pooled_labels.extend(y_te.tolist())
 
     # Identify which test sample is lesional and which is non-lesional
     les_score = non_les_score = None
@@ -287,6 +290,7 @@ print("  (LOSO fold-level AUC equals correct_ranking: each fold has exactly 1L +
 gkf = GroupKFold(n_splits=5)
 
 gkf_accs, gkf_f1s, gkf_aucs = [], [], []
+gkf_pooled_scores, gkf_pooled_labels = [], []   # for the pooled-GroupKFold ROC curve
 
 for fold_id, (train_idx, test_idx) in enumerate(gkf.split(X_traces, y, groups), start=1):
     X_train_features_scaled, X_test_features_scaled, baseline_rows = prepare_fold_features(
@@ -306,6 +310,8 @@ for fold_id, (train_idx, test_idx) in enumerate(gkf.split(X_traces, y, groups), 
     gkf_accs.append(accuracy_score(y_te, y_pred))
     gkf_f1s.append(f1_score(y_te, y_pred, zero_division=0))
     gkf_aucs.append(roc_auc_score(y_te, y_score))
+    gkf_pooled_scores.extend(y_score.tolist())
+    gkf_pooled_labels.extend(y_te.tolist())
 
 gkf_res = {
     "acc_mean": np.mean(gkf_accs), "acc_std": np.std(gkf_accs),
@@ -343,47 +349,59 @@ print(f"Saved -> {RESULTS / 'stage5_metrics.csv'}")
 print(f"Saved -> {RESULTS / 'fold_safe_patient_baseline_log.csv'}")
 
 # ---------------------------------------------------------------------------
-# Figure: Left = LOSO vs GroupKFold bar chart, Right = per-patient table
+# Figure: (top-left) per-fold metric distributions as box plots,
+#         (top-right) pooled ROC curves, (bottom) per-patient table.
+# Box plots replace bar+error-bar so the wide LOSO fold spread is visible;
+# the ROC curve shows discriminability as a curve, not a single AUC bar.
 # ---------------------------------------------------------------------------
-fig = plt.figure(figsize=(16, 7))
-gs  = plt.GridSpec(1, 2, width_ratios=[1, 1.6], wspace=0.28, figure=fig)
+fig = plt.figure(figsize=(15, 11))
+gs  = plt.GridSpec(2, 2, height_ratios=[1, 1.15], hspace=0.32, wspace=0.22, figure=fig)
 
-# ---- Left: comparison bar chart --------------------------------------------
-ax_bar = fig.add_subplot(gs[0])
+# ---- Top-left: per-fold distributions (box + points) -----------------------
+ax_box = fig.add_subplot(gs[0, 0])
+box_series = [
+    ("LOSO\nacc", loso_accs, "#f14040"),
+    ("LOSO AUC\n(rank, degen.)", loso_aucs, "#bdbdbd"),
+    ("GKF\nacc", gkf_accs, "#1a6fdf"),
+    ("GKF\nAUC", gkf_aucs, "#37ad6b"),
+]
+_jit = np.random.RandomState(0)
+bp = ax_box.boxplot([s[1] for s in box_series], widths=0.55, patch_artist=True,
+                    medianprops=dict(color="black", linewidth=1.4),
+                    flierprops=dict(marker="", markersize=0))
+for patch, (_, _, c) in zip(bp["boxes"], box_series):
+    patch.set_facecolor(c); patch.set_alpha(0.55)
+for i, (_, vals, _) in enumerate(box_series):
+    xj = np.full(len(vals), i + 1) + (_jit.rand(len(vals)) - 0.5) * 0.18
+    ax_box.scatter(xj, vals, s=20, color="#333333", alpha=0.65, zorder=3)
+ax_box.axhline(0.5, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
+ax_box.set_xticklabels([s[0] for s in box_series], fontsize=10)
+ax_box.set_ylim(-0.05, 1.1)
+ax_box.set_ylabel("Score", fontsize=12, fontweight="bold")
+ax_box.set_title("Per-fold distributions (LOSO 13 folds, GKF 5 folds)\n"
+                 "LOSO AUC is all 1.0 — the degenerate 1L+1NL metric",
+                 fontsize=11, fontweight="bold")
+ax_box.grid(True, axis="y", linestyle="--", alpha=0.4)
 
-METRIC_KEYS   = ["acc", "f1", "auc"]
-METRIC_LABELS = ["Accuracy", "F1-Score", "AUC-ROC"]
-CV_METHODS    = [("LOSO (primary)", loso_res, "#f14040"),
-                 ("GroupKFold n=5", gkf_res,  "#1a6fdf")]
+# ---- Top-right: pooled ROC curves ------------------------------------------
+ax_roc = fig.add_subplot(gs[0, 1])
+for labels_, scores_, color, name in [
+    (loso_pooled_labels, loso_pooled_scores, "#f0a030", "pooled-LOSO"),
+    (gkf_pooled_labels, gkf_pooled_scores, "#37ad6b", "pooled-GroupKFold"),
+]:
+    fpr, tpr, _ = roc_curve(labels_, scores_)
+    ax_roc.plot(fpr, tpr, color=color, linewidth=2,
+                label=f"{name} (AUC {roc_auc_score(labels_, scores_):.3f})")
+ax_roc.plot([0, 1], [0, 1], color="gray", linestyle="--", linewidth=0.9)
+ax_roc.set_xlim(0, 1); ax_roc.set_ylim(0, 1.02)
+ax_roc.set_xlabel("False positive rate", fontsize=12, fontweight="bold")
+ax_roc.set_ylabel("True positive rate", fontsize=12, fontweight="bold")
+ax_roc.set_title("Pooled out-of-fold ROC (LinearSVC)", fontsize=11, fontweight="bold")
+ax_roc.legend(fontsize=10, loc="lower right")
+ax_roc.grid(True, linestyle="--", alpha=0.4)
 
-x     = np.arange(len(METRIC_KEYS))
-width = 0.32
-
-for i, (name, res, color) in enumerate(CV_METHODS):
-    means  = [res[f"{k}_mean"] for k in METRIC_KEYS]
-    stds   = [res[f"{k}_std"]  for k in METRIC_KEYS]
-    offset = (i - 0.5) * width
-    ax_bar.bar(
-        x + offset, means, width, yerr=stds,
-        label=name, color=color, capsize=5, alpha=0.85,
-        error_kw={"elinewidth": 1.3, "ecolor": "black"},
-    )
-
-ax_bar.set_xticks(x)
-ax_bar.set_xticklabels(METRIC_LABELS, fontsize=12)
-ax_bar.set_ylim(0, 1.30)
-ax_bar.set_ylabel("Score", fontsize=12, fontweight="bold")
-ax_bar.set_title(
-    f"LOSO vs GroupKFold - LinearSVC, fold-safe patient-baseline centering\n"
-    f"Within-patient correct ranking: {n_correct}/13",
-    fontsize=11, fontweight="bold",
-)
-# Legend in lower-right: Accuracy and F1 bars are short there, leaving room
-ax_bar.legend(fontsize=10, title="CV method", title_fontsize=9, loc="lower right")
-ax_bar.grid(True, axis="y", linestyle="--", alpha=0.4)
-
-# ---- Right: per-patient LOSO prediction table ------------------------------
-ax_tbl = fig.add_subplot(gs[1])
+# ---- Bottom: per-patient LOSO prediction table -----------------------------
+ax_tbl = fig.add_subplot(gs[1, :])
 ax_tbl.axis("off")
 
 col_labels = ["Patient", "L-Score", "NL-Score", "L-Pred", "NL-Pred", "L>NL?", "Fold Acc"]

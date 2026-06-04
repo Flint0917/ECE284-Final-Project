@@ -295,46 +295,50 @@ pd.DataFrame(rows).to_csv(RESULTS / "stage6_cnn_trackA_metrics.csv", index=False
 # Figure: (A) train vs test acc (overfit gap), (B) discriminability vs SVM
 # ---------------------------------------------------------------------------
 fig, (axA, axB) = plt.subplots(1, 2, figsize=(14, 6))
-names = [n for n, _ in VARIANTS]
-x = np.arange(len(names))
+_jit = np.random.RandomState(0)
 
-# Panel A: train vs test accuracy
-w = 0.38
-axA.bar(x - w / 2, [summary[n]["loso_train_acc_mean"] for n in names], w,
-        yerr=[summary[n]["loso_train_acc_std"] for n in names],
-        label="train accuracy", color="#9b59b6", capsize=4, alpha=0.85,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
-axA.bar(x + w / 2, [summary[n]["loso_acc_mean"] for n in names], w,
-        yerr=[summary[n]["loso_acc_std"] for n in names],
-        label="LOSO test accuracy", color="#f14040", capsize=4, alpha=0.85,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
-axA.axhline(SVM_REF["loso_acc"], color="#1a6fdf", linestyle="--", linewidth=1.5,
-            label=f"SVM LOSO acc ({SVM_REF['loso_acc']:.3f})")
-axA.axhline(0.5, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
-axA.set_xticks(x); axA.set_xticklabels(names, fontsize=11)
-axA.set_ylim(0, 1.15); axA.set_ylabel("Accuracy", fontsize=12, fontweight="bold")
-axA.set_title("Train vs test accuracy (overfit gap)", fontsize=12, fontweight="bold")
-axA.legend(fontsize=9, loc="upper right"); axA.grid(True, axis="y", linestyle="--", alpha=0.4)
 
-# Panel B: discriminability vs SVM
-w = 0.38
-axB.bar(x - w / 2, [summary[n]["gkf_auc_mean"] for n in names], w,
-        yerr=[summary[n]["gkf_auc_std"] for n in names],
-        label="GroupKFold AUC", color="#37ad6b", capsize=4, alpha=0.85,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
-axB.bar(x + w / 2, [summary[n]["pooled_loso_auc_mean"] for n in names], w,
-        yerr=[summary[n]["pooled_loso_auc_std"] for n in names],
-        label="pooled-LOSO AUC", color="#f0a030", capsize=4, alpha=0.85,
-        error_kw={"elinewidth": 1.2, "ecolor": "black"})
-axB.axhline(SVM_REF["gkf_auc"], color="#1a6fdf", linestyle="--", linewidth=1.5,
-            label=f"SVM GKF AUC ({SVM_REF['gkf_auc']:.3f})")
-axB.axhline(0.5, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
-axB.set_xticks(x); axB.set_xticklabels(names, fontsize=11)
-axB.set_ylim(0, 1.0); axB.set_ylabel("AUC-ROC", fontsize=12, fontweight="bold")
-axB.set_title("Discriminability: CNN vs SVM baseline", fontsize=12, fontweight="bold")
-axB.legend(fontsize=9, loc="lower center"); axB.grid(True, axis="y", linestyle="--", alpha=0.4)
+def _seed_vals(name, key):
+    return [d[key] for d in seed_results[name]]
 
-plt.suptitle("Stage 6 Track A - From-scratch 1D CNN vs SVM (5 seeds, LOSO + GroupKFold)",
+
+def _box_strip(ax, series, ref_line, ref_label, ylabel, title, ylim):
+    """series: list of (label, values, color). Box over seeds + individual points."""
+    positions = np.arange(len(series))
+    bp = ax.boxplot([s[1] for s in series], positions=positions, widths=0.5,
+                    patch_artist=True, medianprops=dict(color="black", linewidth=1.3),
+                    flierprops=dict(marker="", markersize=0))
+    for patch, (_, _, c) in zip(bp["boxes"], series):
+        patch.set_facecolor(c); patch.set_alpha(0.55)
+    for i, (_, vals, _) in enumerate(series):
+        xj = np.full(len(vals), i) + (_jit.rand(len(vals)) - 0.5) * 0.16
+        ax.scatter(xj, vals, s=24, color="#333333", alpha=0.7, zorder=3)
+    ax.axhline(ref_line, color="#1a6fdf", linestyle="--", linewidth=1.5, label=ref_label)
+    ax.axhline(0.5, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
+    ax.set_xticks(positions); ax.set_xticklabels([s[0] for s in series], fontsize=10)
+    ax.set_ylim(*ylim); ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.legend(fontsize=9, loc="lower right"); ax.grid(True, axis="y", linestyle="--", alpha=0.4)
+
+
+# Panel A: train vs test accuracy across 5 seeds
+seriesA = []
+for n, _ in VARIANTS:
+    seriesA.append((f"{n}\ntrain", _seed_vals(n, "loso_train_acc"), "#9b59b6"))
+    seriesA.append((f"{n}\ntest", _seed_vals(n, "loso_acc"), "#f14040"))
+_box_strip(axA, seriesA, SVM_REF["loso_acc"], f"SVM LOSO acc ({SVM_REF['loso_acc']:.3f})",
+           "Accuracy", "Train vs test accuracy across 5 seeds\n(small train-test gap = no overfit)",
+           (0, 1.15))
+
+# Panel B: discriminability across 5 seeds
+seriesB = []
+for n, _ in VARIANTS:
+    seriesB.append((f"{n}\nGKF AUC", _seed_vals(n, "gkf_auc"), "#37ad6b"))
+    seriesB.append((f"{n}\npooled", _seed_vals(n, "pooled_loso_auc"), "#f0a030"))
+_box_strip(axB, seriesB, SVM_REF["gkf_auc"], f"SVM GKF AUC ({SVM_REF['gkf_auc']:.3f})",
+           "AUC-ROC", "Discriminability across 5 seeds: CNN vs SVM", (0, 1.0))
+
+plt.suptitle("Stage 6 Track A - From-scratch 1D CNN vs SVM (per-seed distributions, 5 seeds)",
              fontsize=13, fontweight="bold", y=1.02)
 plt.tight_layout()
 plt.savefig(RESULTS / "stage6_cnn_trackA.png", dpi=150, bbox_inches="tight")

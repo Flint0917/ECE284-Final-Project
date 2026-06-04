@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import skew
+from scipy.stats import mannwhitneyu, skew
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -179,3 +179,42 @@ plt.suptitle("Stage 2 — Feature Extraction (raw traces)",
 out = RESULTS / "stage2_features.png"
 plt.savefig(out, dpi=150, bbox_inches="tight")
 print(f"\nSaved → {out}")
+plt.close(fig)
+
+# ---------------------------------------------------------------------------
+# Second figure: per-class distributions of the top-3 features (box + points).
+# Mirrors the reference paper's Fig 3 (Wilcoxon rank-sum box plots) — shows
+# class separation directly, not just an importance ranking. Each feature has
+# its own axis because the raw features live on very different scales.
+# A Mann-Whitney U test (non-parametric, like the paper's Wilcoxon rank-sum)
+# annotates each feature; with N=13/class these are indicative, not definitive.
+# ---------------------------------------------------------------------------
+top3 = importance_ord[:3]
+fig2, axes = plt.subplots(1, 3, figsize=(13, 5))
+rng = np.random.RandomState(0)
+
+for ax, fi in zip(axes, top3):
+    les_vals = X[y == 1, fi]
+    nl_vals = X[y == 0, fi]
+    bp = ax.boxplot([les_vals, nl_vals], positions=[0, 1], widths=0.5, patch_artist=True,
+                    medianprops=dict(color="black", linewidth=1.4),
+                    flierprops=dict(marker="", markersize=0))
+    for patch, c in zip(bp["boxes"], ["#f14040", "#1a6fdf"]):
+        patch.set_facecolor(c); patch.set_alpha(0.55)
+    for j, vals in enumerate([les_vals, nl_vals]):
+        xj = np.full(len(vals), j) + (rng.rand(len(vals)) - 0.5) * 0.18
+        ax.scatter(xj, vals, s=24, color="#333333", alpha=0.7, zorder=3)
+    _, p = mannwhitneyu(les_vals, nl_vals, alternative="two-sided")
+    ax.set_xticks([0, 1]); ax.set_xticklabels(["Lesional", "Non-Lesional"], fontsize=10)
+    ax.set_title(f"{FEATURE_NAMES[fi]}\nMann-Whitney p = {p:.3f}", fontsize=12, fontweight="bold")
+    ax.grid(True, axis="y", linestyle="--", alpha=0.4)
+
+axes[0].set_ylabel("Raw feature value", fontsize=12, fontweight="bold")
+plt.suptitle("Stage 2 — Top-3 feature distributions by class (raw traces)",
+             fontsize=13, fontweight="bold", y=1.03)
+plt.tight_layout()
+
+out2 = RESULTS / "stage2_feature_boxplots.png"
+plt.savefig(out2, dpi=150, bbox_inches="tight")
+print(f"Saved → {out2}")
+plt.close(fig2)

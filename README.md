@@ -27,10 +27,12 @@ lesional/non-lesional labels, with Corneometer references.
 | Script | Stage | What it does | Output |
 |---|---|---|---|
 | `src/stage1_replication.py` | 1 | Reproduces Todorov Fig. 9(a): per-patient lesional vs non-lesional mean capacitance | `stage1_replication.png` |
-| `src/stage2_features.py` | 2 | Extracts 6 features (mean, std, median, range, slope, skewness) per trace; Random Forest importance | `stage2_features.png` |
-| `src/stage3_normalization.py` | 3 | Compares feature z-score, RobustScaler, and fold-safe patient-baseline centering under LOSO | `stage3_normalization.png` |
+| `src/stage2_features.py` | 2 | Extracts 6 features (mean, std, median, range, slope, skewness) per trace; Random Forest importance + per-class feature box plots | `stage2_features.png`, `stage2_feature_boxplots.png` |
+| `src/stage3_normalization.py` | 3 | Compares feature z-score, RobustScaler, and fold-safe patient-baseline centering under LOSO + GroupKFold(5) + pooled-LOSO AUC (box plots) | `stage3_normalization.png`, `stage3_normalization_results.csv` |
 | `src/stage4_window_length.py` | 4 | Window-length sweep — prefix (0→N) and post-settling (5→N, 10→N) windows | `stage4_window_length.{png,csv}` |
-| `src/stage5_evaluation.py` | 5 | LinearSVC under LOSO + GroupKFold; per-patient ranking table | `stage5_evaluation.png`, `stage5_metrics.csv`, `stage5_loso_per_patient.csv` |
+| `src/stage5_evaluation.py` | 5 | LinearSVC under LOSO + GroupKFold; per-fold box plots, pooled ROC curves, per-patient ranking table | `stage5_evaluation.png`, `stage5_metrics.csv`, `stage5_loso_per_patient.csv` |
+| `src/stage6_cnn_trackA.py` | 6 | From-scratch 1D CNN (±jitter) vs SVM, 5 seeds, LOSO+GroupKFold (per-seed box plots) | `stage6_cnn_trackA.{png,csv}` |
+| `src/verify_loso_auc.py` | — | Verifies the LOSO AUC=1.0 is a degenerate 1-vs-1 metric, not leakage | (prints diagnostics) |
 
 All normalization and feature scaling is fit **inside each CV fold on training
 patients only** to prevent identity leakage; held-out patients use the training
