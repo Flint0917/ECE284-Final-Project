@@ -1,6 +1,0 @@
-normalization,acc_mean,acc_std,f1_mean,f1_std,auc_mean,auc_std
-trace z-score,0.5385,0.2371,0.4103,0.3956,0.7692,0.4213
-trace min-max,0.4615,0.3077,0.3077,0.4022,0.4615,0.4985
-feature z-score,0.7692,0.2493,0.7436,0.3497,0.8462,0.3608
-robust scaler,0.7692,0.2493,0.7436,0.3497,0.8462,0.3608
-training-only patient baseline normalization,0.6538,0.2308,0.4615,0.4441,1.0,0.0
