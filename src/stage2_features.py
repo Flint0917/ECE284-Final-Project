@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import mannwhitneyu, skew
+from scipy.stats import skew
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -100,9 +100,7 @@ for rank, i in enumerate(importance_ord):
     print(f"  {rank + 1}. {FEATURE_NAMES[i]:<10}  {importances[i]:.4f}")
 
 # ---------------------------------------------------------------------------
-# Standardize feature matrix for heatmap display
-# Raw features have very different scales; standardizing columns here is only
-# for visualization and does not change the extracted feature values above.
+# Standardize feature matrix for heatmap display only
 # ---------------------------------------------------------------------------
 X_std = StandardScaler().fit_transform(X)
 
@@ -111,37 +109,18 @@ row_labels = [
     for _, row in df.iterrows()
 ]
 heatmap_df = pd.DataFrame(X_std, index=row_labels, columns=FEATURE_NAMES)
-
-# Colour for each row's y-axis tick label
 tick_colors = ["#f14040" if lbl == 1 else "#1a6fdf" for lbl in df["label"].values]
 
 # ---------------------------------------------------------------------------
-# Two-panel figure
+# Two-panel figure — stacked vertically for the 2-column report layout:
+#   top:    heatmap of per-trace feature values
+#   bottom: feature importance, drawn as a horizontal-layout bar chart
+#           (vertical bars across the now wide-relative-to-tall panel)
 # ---------------------------------------------------------------------------
-fig = plt.figure(figsize=(14, 8))
-gs  = gridspec.GridSpec(1, 2, width_ratios=[1, 2.2], wspace=0.38)
+fig = plt.figure(figsize=(7, 13))
+gs  = gridspec.GridSpec(2, 1, height_ratios=[2.0, 1], hspace=0.45, figure=fig)
 
-# ---- Left: feature importance bar chart ------------------------------------
-ax_imp = fig.add_subplot(gs[0])
-
-bar_cols = ["#f14040" if i == importance_ord[0] else "#515151"
-            for i in range(len(FEATURE_NAMES))]
-
-ax_imp.barh(
-    [FEATURE_NAMES[i] for i in importance_ord],
-    importances[importance_ord],
-    color=[bar_cols[i] for i in importance_ord],
-    edgecolor="white",
-)
-ax_imp.invert_yaxis()
-ax_imp.set_xlabel("Mean Decrease in Impurity", fontsize=12, fontweight="bold")
-ax_imp.set_title("Feature Importance\n(Random Forest)", fontsize=13, fontweight="bold")
-ax_imp.grid(True, axis="x", linestyle="--", alpha=0.5)
-ax_imp.tick_params(axis="y", labelsize=11)
-
-# ---- Right: heatmap -------------------------------------------------------
-ax_hm = fig.add_subplot(gs[1])
-
+ax_hm = fig.add_subplot(gs[0])
 sns.heatmap(
     heatmap_df,
     ax=ax_hm,
@@ -152,7 +131,7 @@ sns.heatmap(
     cbar_kws={"label": "Standardized feature value", "shrink": 0.75},
     yticklabels=True,
 )
-
+ax_hm.set_aspect("auto")
 ax_hm.set_title(
     "Feature Values per Trace — raw features standardised for display\n"
     "(red y-labels = Lesional, blue = Non-Lesional)",
@@ -161,7 +140,6 @@ ax_hm.set_title(
 ax_hm.set_xlabel("Feature", fontsize=12, fontweight="bold")
 ax_hm.set_ylabel("")
 ax_hm.tick_params(axis="x", labelsize=11, rotation=25)
-
 for tick, color in zip(ax_hm.get_yticklabels(), tick_colors):
     tick.set_color(color)
     tick.set_fontsize(8.5)
@@ -171,50 +149,26 @@ patches = [
     mpatches.Patch(color="#1a6fdf", label="Non-Lesional"),
 ]
 ax_hm.legend(handles=patches, fontsize=10, loc="upper right",
-             bbox_to_anchor=(1.42, 1.0))
+             bbox_to_anchor=(1.32, 1.0))
 
-plt.suptitle("Stage 2 — Feature Extraction (raw traces)",
-             fontsize=14, fontweight="bold", y=1.01)
+ax_imp = fig.add_subplot(gs[1])
+bar_cols = ["#f14040" if i == importance_ord[0] else "#515151"
+            for i in range(len(FEATURE_NAMES))]
+ax_imp.bar(
+    [FEATURE_NAMES[i] for i in importance_ord],
+    importances[importance_ord],
+    color=[bar_cols[i] for i in importance_ord],
+    edgecolor="white",
+)
+ax_imp.set_ylabel("Mean Decrease in Impurity", fontsize=12, fontweight="bold")
+ax_imp.set_title("Feature Importance (Random Forest)", fontsize=13, fontweight="bold")
+ax_imp.grid(True, axis="y", linestyle="--", alpha=0.5)
+ax_imp.tick_params(axis="x", labelsize=11, rotation=20)
+
+fig.suptitle("Stage 2 — Feature Extraction (raw traces)",
+             fontsize=14, fontweight="bold")
+gs.tight_layout(fig, rect=[0, 0, 1, 0.96])
 
 out = RESULTS / "stage2_features.png"
 plt.savefig(out, dpi=150, bbox_inches="tight")
-print(f"\nSaved → {out}")
-plt.close(fig)
-
-# ---------------------------------------------------------------------------
-# Second figure: per-class distributions of the top-3 features (box + points).
-# Mirrors the reference paper's Fig 3 (Wilcoxon rank-sum box plots) — shows
-# class separation directly, not just an importance ranking. Each feature has
-# its own axis because the raw features live on very different scales.
-# A Mann-Whitney U test (non-parametric, like the paper's Wilcoxon rank-sum)
-# annotates each feature; with N=13/class these are indicative, not definitive.
-# ---------------------------------------------------------------------------
-top3 = importance_ord[:3]
-fig2, axes = plt.subplots(1, 3, figsize=(13, 5))
-rng = np.random.RandomState(0)
-
-for ax, fi in zip(axes, top3):
-    les_vals = X[y == 1, fi]
-    nl_vals = X[y == 0, fi]
-    bp = ax.boxplot([les_vals, nl_vals], positions=[0, 1], widths=0.5, patch_artist=True,
-                    medianprops=dict(color="black", linewidth=1.4),
-                    flierprops=dict(marker="", markersize=0))
-    for patch, c in zip(bp["boxes"], ["#f14040", "#1a6fdf"]):
-        patch.set_facecolor(c); patch.set_alpha(0.55)
-    for j, vals in enumerate([les_vals, nl_vals]):
-        xj = np.full(len(vals), j) + (rng.rand(len(vals)) - 0.5) * 0.18
-        ax.scatter(xj, vals, s=24, color="#333333", alpha=0.7, zorder=3)
-    _, p = mannwhitneyu(les_vals, nl_vals, alternative="two-sided")
-    ax.set_xticks([0, 1]); ax.set_xticklabels(["Lesional", "Non-Lesional"], fontsize=10)
-    ax.set_title(f"{FEATURE_NAMES[fi]}\nMann-Whitney p = {p:.3f}", fontsize=12, fontweight="bold")
-    ax.grid(True, axis="y", linestyle="--", alpha=0.4)
-
-axes[0].set_ylabel("Raw feature value", fontsize=12, fontweight="bold")
-plt.suptitle("Stage 2 — Top-3 feature distributions by class (raw traces)",
-             fontsize=13, fontweight="bold", y=1.03)
-plt.tight_layout()
-
-out2 = RESULTS / "stage2_feature_boxplots.png"
-plt.savefig(out2, dpi=150, bbox_inches="tight")
-print(f"Saved → {out2}")
-plt.close(fig2)
+print(f"\nSaved -> {out}")

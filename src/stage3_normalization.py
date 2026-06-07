@@ -37,6 +37,8 @@ Outputs:
 
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -263,7 +265,6 @@ METHODS = [
     "training-only patient baseline normalization",
 ]
 results = {}
-fold_data = {}   # per-fold value lists, kept for the box plots
 
 for method in METHODS:
     # LOSO: keep accuracy/F1 and the (degenerate) per-fold AUC = pairwise ranking,
@@ -272,10 +273,6 @@ for method in METHODS:
     # GroupKFold: 4-6 samples per fold -> per-fold AUC is a real, graded AUC.
     gkf_acc, gkf_f1, gkf_auc, _ = run_cv(method, gkf)
 
-    fold_data[method] = {
-        "loso_acc": loso_acc, "loso_rank": loso_rank,
-        "gkf_auc": gkf_auc, "pooled_loso_auc": loso_pooled_auc,
-    }
     results[method] = {
         "loso_acc_mean": np.mean(loso_acc), "loso_acc_std": np.std(loso_acc),
         "loso_f1_mean": np.mean(loso_f1), "loso_f1_std": np.std(loso_f1),
@@ -311,69 +308,51 @@ pd.DataFrame([
     {"normalization": method, **{k: round(v, 4) for k, v in metrics.items()}}
     for method, metrics in results.items()
 ]).to_csv(RESULTS / "stage3_normalization_results.csv", index=False)
+print(f"\nSaved -> {RESULTS / 'stage3_normalization_results.csv'}")
 
 # ---------------------------------------------------------------------------
-# Figure: box plots over folds (bar+error-bar hides the wide fold spread).
-#   (A) LOSO per-fold accuracy distribution (13 folds/method)
-#   (B) GroupKFold per-fold AUC distribution (5 folds/method) + pooled-LOSO marker
+# Figure: vertically stacked — GKF AUC (top) and LOSO accuracy (bottom)
 # ---------------------------------------------------------------------------
-SHORT = {
-    "trace z-score": "trace\nz-score",
-    "trace min-max": "trace\nmin-max",
-    "feature z-score": "feature\nz-score",
-    "robust scaler": "robust\nscaler",
-    "training-only patient baseline normalization": "patient\nbaseline",
-}
-xt = [SHORT[m] for m in METHODS]
-pos = np.arange(len(METHODS))
-jit = np.random.RandomState(0)   # reproducible point jitter
+short_labels = [
+    "trace\nz-score",
+    "trace\nmin-max",
+    "feature\nz-score",
+    "robust\nscaler",
+    "patient\nbaseline",
+]
+methods_list = list(METHODS)
+colors = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B2"]
 
+gkf_aucs  = [results[m]["gkf_auc_mean"]  for m in methods_list]
+gkf_errs  = [results[m]["gkf_auc_std"]   for m in methods_list]
+loso_accs = [results[m]["loso_acc_mean"] for m in methods_list]
+loso_errs = [results[m]["loso_acc_std"]  for m in methods_list]
 
-def _boxplot(ax, data, facecolor):
-    bp = ax.boxplot(data, positions=pos, widths=0.55, patch_artist=True,
-                    medianprops=dict(color="black", linewidth=1.4),
-                    flierprops=dict(marker="", markersize=0))
-    for patch in bp["boxes"]:
-        patch.set_facecolor(facecolor)
-        patch.set_alpha(0.55)
-    for i, vals in enumerate(data):       # overlay individual fold points
-        xj = np.full(len(vals), i) + (jit.rand(len(vals)) - 0.5) * 0.18
-        ax.scatter(xj, vals, s=18, color="#333333", alpha=0.65, zorder=3)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 7), sharex=True)
 
+# Top: GKF AUC
+bars1 = ax1.bar(short_labels, gkf_aucs, yerr=gkf_errs, capsize=4,
+                color=colors, edgecolor="white", width=0.55)
+ax1.axhline(0.5, color="gray", linestyle="--", linewidth=0.8)
+ax1.set_ylabel("GroupKFold AUC")
+ax1.set_title("Normalization comparison — discriminability\n(GroupKFold n=5, honest metric)")
+ax1.set_ylim(0.3, 1.05)
+for bar, v in zip(bars1, gkf_aucs):
+    ax1.text(bar.get_x() + bar.get_width() / 2, v + 0.015, f"{v:.3f}",
+             ha="center", va="bottom", fontsize=8)
 
-fig, (axA, axB) = plt.subplots(1, 2, figsize=(15, 6))
+# Bottom: LOSO accuracy
+bars2 = ax2.bar(short_labels, loso_accs, yerr=loso_errs, capsize=4,
+                color=colors, edgecolor="white", width=0.55)
+ax2.axhline(0.5, color="gray", linestyle="--", linewidth=0.8)
+ax2.set_ylabel("LOSO accuracy")
+ax2.set_title("Normalization comparison — threshold accuracy\n(LOSO 13-fold, primary generalization test)")
+ax2.set_ylim(0.3, 1.05)
+for bar, v in zip(bars2, loso_accs):
+    ax2.text(bar.get_x() + bar.get_width() / 2, v + 0.015, f"{v:.3f}",
+             ha="center", va="bottom", fontsize=8)
 
-# ---- Panel A: LOSO per-fold accuracy distribution --------------------------
-_boxplot(axA, [fold_data[m]["loso_acc"] for m in METHODS], "#f14040")
-axA.axhline(0.5, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
-axA.set_xticks(pos); axA.set_xticklabels(xt, fontsize=10)
-axA.set_ylim(-0.05, 1.1)
-axA.set_ylabel("LOSO per-fold accuracy", fontsize=12, fontweight="bold")
-axA.set_title("LOSO accuracy distribution (13 folds)\nbar+error-bar would hide this spread",
-              fontsize=12, fontweight="bold")
-axA.grid(True, axis="y", linestyle="--", alpha=0.4)
-
-# ---- Panel B: GroupKFold per-fold AUC distribution + pooled-LOSO ------------
-_boxplot(axB, [fold_data[m]["gkf_auc"] for m in METHODS], "#37ad6b")
-for i, m in enumerate(METHODS):          # pooled-LOSO AUC as a diamond marker
-    axB.scatter(i, fold_data[m]["pooled_loso_auc"], marker="D", s=70, zorder=4,
-                color="#f0a030", edgecolor="black", linewidth=0.8,
-                label="pooled-LOSO AUC" if i == 0 else None)
-axB.axhline(0.5, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
-axB.set_xticks(pos); axB.set_xticklabels(xt, fontsize=10)
-axB.set_ylim(-0.05, 1.1)
-axB.set_ylabel("AUC-ROC", fontsize=12, fontweight="bold")
-axB.set_title("GroupKFold AUC distribution (5 folds) + pooled-LOSO AUC (◆)",
-              fontsize=12, fontweight="bold")
-axB.legend(fontsize=9, loc="lower center")
-axB.grid(True, axis="y", linestyle="--", alpha=0.4)
-
-plt.suptitle("Stage 3 - Normalization Comparison (LinearSVC; per-fold distributions)",
-             fontsize=13, fontweight="bold", y=1.02)
 plt.tight_layout()
-
-out = RESULTS / "stage3_normalization.png"
-plt.savefig(out, dpi=150, bbox_inches="tight")
-print(f"\nSaved -> {out}")
-print(f"Saved -> {RESULTS / 'stage3_normalization_results.csv'}")
-plt.close()
+fig.savefig(RESULTS / "stage3_normalization.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"Saved -> {RESULTS / 'stage3_normalization.png'}")

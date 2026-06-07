@@ -174,7 +174,7 @@ print(f"\nSaved -> {RESULTS / 'stage4_window_length.csv'}")
 # ---------------------------------------------------------------------------
 METRICS = [("acc", "Accuracy"), ("f1", "F1-Score"), ("auc", "AUC-ROC")]
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=True)
+fig, axes = plt.subplots(3, 1, figsize=(6, 13), sharex=True)
 
 for ax, (mkey, mlabel) in zip(axes, METRICS):
     for family_name, dur_dict in family_results.items():
@@ -199,19 +199,19 @@ for ax, (mkey, mlabel) in zip(axes, METRICS):
         )
 
     ax.set_title(mlabel, fontsize=13, fontweight="bold")
-    ax.set_xlabel("Window Duration (s)", fontsize=11, fontweight="bold")
     ax.set_xticks([5, 10, 15, 20, 25, 30])
     ax.set_ylim(0, 1.15)
+    ax.set_ylabel("Score (mean +/- std, 13 LOSO folds)", fontsize=10, fontweight="bold")
     # chance-level reference line
     ax.axhline(0.5, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
     ax.grid(True, linestyle="--", alpha=0.4)
 
-axes[0].set_ylabel("Score (mean +/- std, 13 LOSO folds)", fontsize=11, fontweight="bold")
+axes[-1].set_xlabel("Window Duration (s)", fontsize=11, fontweight="bold")
 
 # single shared legend below all subplots
 handles, leg_labels = axes[0].get_legend_handles_labels()
 fig.legend(handles, leg_labels, loc="lower center", ncol=3, fontsize=10,
-           bbox_to_anchor=(0.5, -0.08), framealpha=0.9)
+           bbox_to_anchor=(0.5, -0.04), framealpha=0.9)
 
 plt.suptitle(
     "Stage 4 - Expanded Window Length Study\n"

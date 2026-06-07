@@ -36,12 +36,10 @@ Outputs:
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from scipy.stats import skew  # noqa: F401  (kept for parity with other stages)
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 
@@ -196,6 +194,8 @@ def run_cv(splitter, jitter):
         "train_acc": np.mean(train_accs),
         "pooled_auc": roc_auc_score(pooled_labels, pooled_scores),
         "rank_frac": (rank_hits / n_folds) if n_folds else np.nan,
+        "pooled_scores": pooled_scores,
+        "pooled_labels": pooled_labels,
     }
 
 
@@ -208,6 +208,9 @@ VARIANTS = [("CNN-scratch", False), ("CNN-jitter", True)]
 
 # seed_results[variant] = list of per-seed summary dicts
 seed_results = {name: [] for name, _ in VARIANTS}
+# per-seed pooled LOSO scores for ROC curve averaging
+seed_loso_scores = {name: [] for name, _ in VARIANTS}
+seed_loso_labels = {name: [] for name, _ in VARIANTS}
 
 for seed in SEEDS:
     for name, jitter in VARIANTS:
@@ -223,6 +226,8 @@ for seed in SEEDS:
             "pooled_loso_auc": loso["pooled_auc"],
             "gkf_acc": gk["acc"], "gkf_auc": gk["auc"],
         })
+        seed_loso_scores[name].append(loso["pooled_scores"])
+        seed_loso_labels[name].append(loso["pooled_labels"])
 
 
 def agg(name):
@@ -290,58 +295,63 @@ rows.append({"model": "SVM (feature z-score, ref)", "train_acc": "-",
              "gkf_acc": f"{SVM_REF['gkf_acc']:.3f}", "gkf_auc": f"{SVM_REF['gkf_auc']:.3f}",
              "pooled_loso_auc": f"{SVM_REF['pooled_loso_auc']:.3f}", "loso_rank": "-"})
 pd.DataFrame(rows).to_csv(RESULTS / "stage6_cnn_trackA_metrics.csv", index=False)
+print(f"\nSaved -> {RESULTS / 'stage6_cnn_trackA_metrics.csv'}")
 
 # ---------------------------------------------------------------------------
-# Figure: (A) train vs test acc (overfit gap), (B) discriminability vs SVM
+# Figure: vertically stacked — jitter augmentation effect (top),
+# train vs test accuracy / overfit diagnostic (bottom).
+# (The SVM-vs-CNN GKF AUC comparison lives in the Track B figure, which
+# already needs all four models side by side — repeating it here would be
+# redundant, so Track A's figure instead isolates what's unique to it: the
+# augmentation ablation and the overfitting check.)
 # ---------------------------------------------------------------------------
-fig, (axA, axB) = plt.subplots(1, 2, figsize=(14, 6))
-_jit = np.random.RandomState(0)
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
+colors = ["#4C72B0", "#55A868", "#C44E52"]   # SVM, CNN-scratch, CNN-jitter
 
-def _seed_vals(name, key):
-    return [d[key] for d in seed_results[name]]
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 7))
 
+# Top: effect of jitter augmentation — CNN-scratch vs CNN-jitter across metrics
+metric_keys = [("gkf_auc", "GKF AUC"), ("pooled_loso_auc", "pooled-LOSO AUC"),
+               ("loso_acc", "LOSO acc")]
+xpos = np.arange(len(metric_keys))
+w = 0.35
+scratch_vals = [summary["CNN-scratch"][f"{k}_mean"] for k, _ in metric_keys]
+scratch_errs = [summary["CNN-scratch"][f"{k}_std"]  for k, _ in metric_keys]
+jitter_vals  = [summary["CNN-jitter"][f"{k}_mean"]  for k, _ in metric_keys]
+jitter_errs  = [summary["CNN-jitter"][f"{k}_std"]   for k, _ in metric_keys]
 
-def _box_strip(ax, series, ref_line, ref_label, ylabel, title, ylim):
-    """series: list of (label, values, color). Box over seeds + individual points."""
-    positions = np.arange(len(series))
-    bp = ax.boxplot([s[1] for s in series], positions=positions, widths=0.5,
-                    patch_artist=True, medianprops=dict(color="black", linewidth=1.3),
-                    flierprops=dict(marker="", markersize=0))
-    for patch, (_, _, c) in zip(bp["boxes"], series):
-        patch.set_facecolor(c); patch.set_alpha(0.55)
-    for i, (_, vals, _) in enumerate(series):
-        xj = np.full(len(vals), i) + (_jit.rand(len(vals)) - 0.5) * 0.16
-        ax.scatter(xj, vals, s=24, color="#333333", alpha=0.7, zorder=3)
-    ax.axhline(ref_line, color="#1a6fdf", linestyle="--", linewidth=1.5, label=ref_label)
-    ax.axhline(0.5, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
-    ax.set_xticks(positions); ax.set_xticklabels([s[0] for s in series], fontsize=10)
-    ax.set_ylim(*ylim); ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=12, fontweight="bold")
-    ax.legend(fontsize=9, loc="lower right"); ax.grid(True, axis="y", linestyle="--", alpha=0.4)
+ax1.bar(xpos - w/2, scratch_vals, width=w, yerr=scratch_errs, capsize=4,
+        color=colors[1], edgecolor="white", label="CNN-scratch")
+ax1.bar(xpos + w/2, jitter_vals, width=w, yerr=jitter_errs, capsize=4,
+        color=colors[2], edgecolor="white", label="CNN-jitter")
+ax1.set_xticks(xpos)
+ax1.set_xticklabels([lbl for _, lbl in metric_keys])
+ax1.set_ylabel("Score (mean +/- std, 5 seeds)")
+ax1.set_ylim(0.5, 1.0)
+ax1.set_title("Effect of jitter augmentation\n(does it mitigate small-N overfitting?)")
+ax1.legend(fontsize=8)
 
+# Bottom: train vs LOSO test accuracy (overfitting diagnostic)
+train_accs = [summary["CNN-scratch"]["loso_train_acc_mean"], summary["CNN-jitter"]["loso_train_acc_mean"]]
+test_accs  = [summary["CNN-scratch"]["loso_acc_mean"],       summary["CNN-jitter"]["loso_acc_mean"]]
+test_errs  = [summary["CNN-scratch"]["loso_acc_std"],        summary["CNN-jitter"]["loso_acc_std"]]
+x2 = np.array([0, 1])
+ax2.bar(x2 - w/2, train_accs, width=w, color="#AAAAAA", edgecolor="white", label="Train acc")
+ax2.bar(x2 + w/2, test_accs, yerr=test_errs, capsize=4,
+        width=w, color=colors[1:], edgecolor="white", label="LOSO test acc")
+ax2.axhline(SVM_REF["loso_acc"], color=colors[0], linestyle="--", linewidth=1,
+            label=f"SVM LOSO acc ({SVM_REF['loso_acc']:.3f})")
+ax2.set_xticks(x2)
+ax2.set_xticklabels(["CNN-scratch", "CNN-jitter"])
+ax2.set_ylabel("Accuracy")
+ax2.set_title("Train vs LOSO test accuracy\n(small gap = no overfit)")
+ax2.set_ylim(0.5, 1.02)
+ax2.legend(fontsize=8)
 
-# Panel A: train vs test accuracy across 5 seeds
-seriesA = []
-for n, _ in VARIANTS:
-    seriesA.append((f"{n}\ntrain", _seed_vals(n, "loso_train_acc"), "#9b59b6"))
-    seriesA.append((f"{n}\ntest", _seed_vals(n, "loso_acc"), "#f14040"))
-_box_strip(axA, seriesA, SVM_REF["loso_acc"], f"SVM LOSO acc ({SVM_REF['loso_acc']:.3f})",
-           "Accuracy", "Train vs test accuracy across 5 seeds\n(small train-test gap = no overfit)",
-           (0, 1.15))
-
-# Panel B: discriminability across 5 seeds
-seriesB = []
-for n, _ in VARIANTS:
-    seriesB.append((f"{n}\nGKF AUC", _seed_vals(n, "gkf_auc"), "#37ad6b"))
-    seriesB.append((f"{n}\npooled", _seed_vals(n, "pooled_loso_auc"), "#f0a030"))
-_box_strip(axB, seriesB, SVM_REF["gkf_auc"], f"SVM GKF AUC ({SVM_REF['gkf_auc']:.3f})",
-           "AUC-ROC", "Discriminability across 5 seeds: CNN vs SVM", (0, 1.0))
-
-plt.suptitle("Stage 6 Track A - From-scratch 1D CNN vs SVM (per-seed distributions, 5 seeds)",
-             fontsize=13, fontweight="bold", y=1.02)
 plt.tight_layout()
-plt.savefig(RESULTS / "stage6_cnn_trackA.png", dpi=150, bbox_inches="tight")
-print(f"\nSaved -> {RESULTS / 'stage6_cnn_trackA.png'}")
-print(f"Saved -> {RESULTS / 'stage6_cnn_trackA_metrics.csv'}")
-plt.close()
+fig.savefig(RESULTS / "stage6_cnn_trackA.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"Saved -> {RESULTS / 'stage6_cnn_trackA.png'}")

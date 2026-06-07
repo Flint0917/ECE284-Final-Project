@@ -26,7 +26,8 @@
 | CNN pretraining via self-supervision | Adopted (Session 7). Pretrain via signal reconstruction (autoencoder) or forecasting on *unlabeled* EDA windows, NOT external stress labels — sidesteps source-target task mismatch (Fawaz 2018) |
 | CNN pretraining source dataset | Candidates identified (Session 7). WESAD EDA (skin conductance, most domain-similar) as primary; UCR/UEA archive as methodological-standard alternative. Confirmed no public skin-capacitance-on-AD dataset exists besides Todorov, so transfer must use a *similar* (not identical) 1D signal |
 | CNN claim framing | Decided (Session 7). CNN positioned as a data-scarcity *mitigation* attempt: from-scratch CNN failure diagnoses the bottleneck; transfer learning tests a remedy. Claim must be "mitigate/narrow," NOT "solve" scarcity. True benchmark is the SVM baseline, not the (expectedly weak) from-scratch CNN |
-| Track A outcome → Track B dropped | Resolved by data (Session 7). Track A CNN did NOT overfit and matched/beat the SVM (GKF AUC 0.871 vs 0.822); pre-registered Track B trigger did not fire, so Track B is not pursued. New framing: a small well-regularized CNN (GAP + dropout) rediscovers the mean-level feature and ties the SVM at N=26 — end-to-end learning needs no transfer learning when the discriminative signal is this simple. Stronger and more honest than the original "CNN fails" narrative |
+| Track A outcome → Track B dropped (Session 7) | Track A CNN did NOT overfit and matched/beat the SVM (GKF AUC 0.871 vs 0.822); pre-registered trigger did not fire, Track B was not pursued at that time |
+| Track B reinstated for report (Session 8) | Track B pursued regardless of trigger — question reframed as "does pretraining on domain-adjacent EDA push further beyond the strong from-scratch baseline?" WESAD EDA (15 subjects, 2889 windows at 1 Hz after downsampling from 4 Hz) used as pretraining source. Self-supervised reconstruction (autoencoder MSE), no stress labels |
 
 ---
 
@@ -40,7 +41,7 @@
 | 4. Window length experiment (prefix + post-settling windows) | Core | **Complete** — results/stage4_window_length.png, results/stage4_window_length.csv |
 | 5. Evaluation expansion — LOSO + GroupKFold + within-patient | Core | **Complete** — results/stage5_evaluation.png, results/stage5_loso_per_patient.csv, results/stage5_metrics.csv |
 | 6a. 1D CNN — Track A (from-scratch + jittering) | Core | **Complete** — results/stage6_cnn_trackA.png; CNN ties/beats SVM, NO overfit |
-| 6b. 1D CNN — Track B (self-supervised transfer learning) | Optional | **Not pursued** — Track A's pre-registered trigger (overfit AND loses to SVM) did not fire; retained as described methodology / future work |
+| 6b. 1D CNN — Track B (self-supervised transfer learning) | Optional | **Complete** — results/stage6_cnn_trackB.png, results/stage6_cnn_trackB_metrics.csv; GKF AUC 0.827 (below CNN-scratch 0.871); see findings |
 | 7. ML features vs. Corneometer correlation | Optional, results-dependent | Not started |
 
 ---
@@ -171,7 +172,24 @@ Confirms the normalization decision: feature z-score (GKF AUC 0.822) ties patien
 
 **Surprising, honest finding (contradicts the expected "CNN overfits at N=26"):** the CNN does NOT overfit (train–test gap only 0.076, far below the pre-registered 0.20) and does NOT lose to the SVM — its GroupKFold AUC (0.871) edges *above* the SVM (0.822). Mechanism: the small architecture + Global Average Pooling + dropout is strongly regularized; GAP effectively averages the trace, so the CNN rediscovers the "mean capacitance level" — the same #1 feature the SVM uses. They tie because the discriminative signal is the simple per-site level, not subtle waveform shape. Jittering barely helps (nothing to fix). The CNN sees strictly *more* information than the 6 handcrafted features yet only matches the SVM → confirms signal simplicity, not an information deficit.
 
-**Decision:** Track B (transfer learning) NOT pursued — pre-registered trigger (overfit AND loses to SVM) did not fire. Honest contract honored.
+**Decision:** Track B (transfer learning) NOT triggered by data (pre-registered condition did not fire), but pursued in Session 8 for the report — see Stage 6 Track B findings below.
+
+### Stage 6 Track B — Self-supervised transfer from WESAD EDA (Session 8)
+
+Pretraining source: WESAD dataset (15 subjects, E4 wristband EDA at 4 Hz → downsampled to 1 Hz, segmented into non-overlapping 30-s windows = 2889 windows). Autoencoder: same 2× Conv1d encoder as TinyCNN + symmetric Conv1d decoder. Self-supervised MSE reconstruction loss — no stress labels used (avoids task mismatch, Fawaz 2018). Encoder frozen after pretraining; new GAP + Dropout(0.3) + Linear(16, 2) head fine-tuned on 26 IDC traces. 5 seeds, same LOSO + GKF protocol as Track A.
+
+| Model | train acc | LOSO acc | GKF AUC | pooled-LOSO | LOSO rank |
+|---|---|---|---|---|---|
+| CNN-transfer (Track B) | 0.726±0.036 | 0.715±0.039 | 0.827±0.022 | 0.773±0.008 | 0.985±0.031 |
+| CNN-jitter (Track A ref) | — | 0.777 | 0.889 | 0.815 | — |
+| CNN-scratch (Track A ref) | — | 0.769 | 0.871 | 0.808 | — |
+| SVM (Stage 3 ref) | — | 0.769 | 0.822 | 0.781 | — |
+
+**Pretrain convergence:** MSE drops to ~0.00001 within ~10 epochs — the small Conv1d model perfectly reconstructs smooth EDA signals. This confirms the autoencoder learned to represent the signal; whether it learned *generalizable* temporal structure is answered by the downstream AUC.
+
+**Key finding:** CNN-transfer GKF AUC 0.827 is above SVM (0.822) but *below* both CNN-scratch (0.871) and CNN-jitter (0.889). LOSO accuracy 0.715 is the lowest of all four models. Freezing the encoder — whose weights were optimized for WESAD EDA reconstruction — hurts relative to learning the encoder directly from IDC traces. Skin conductance (µS) and skin capacitance (pF) measure related but distinct phenomena at different body sites; frozen temporal representations do not fully transfer. The finding *confirms* the Track A interpretation: the discriminative feature is the mean capacitance level, captured immediately by GAP; waveform-level initialization from a different physical modality adds no value and a small cost (frozen weights that could otherwise adapt).
+
+**Report framing:** present as a completed two-track CNN experiment. Track A: end-to-end learning rediscovers the mean-level feature and ties the SVM. Track B: self-supervised pretraining on domain-adjacent EDA does not improve over from-scratch — the signal is too simple to benefit from richer temporal initialization, confirming the Track A mechanism rather than contradicting it.
 
 ---
 
@@ -184,7 +202,7 @@ Confirms the normalization decision: feature z-score (GKF AUC 0.822) ties patien
 - Trace completeness: identify which patients have fewer than 30 genuine timesteps; needed before Stage 4 settling interpretation is valid
 - ~~Normalization primary method (TA question on progress update)~~ ✓ Resolved (Session 7) — feature z-score primary; patient-baseline as tracking variant
 - ~~CNN Track A architecture~~ ✓ Done (Session 7) — TinyCNN (2× Conv1d 8→16, GAP, dropout) + jitter variant; ties/beats SVM, no overfit
-- ~~CNN Track B~~ Not pursued (Session 7) — data didn't motivate it; remains described as future work for a larger/harder dataset (self-supervised pretrain on WESAD EDA, freeze conv, retrain final layer)
+- ~~CNN Track B~~ ✓ Complete (Session 8) — WESAD EDA pretraining; GKF AUC 0.827, below CNN-scratch — confirms signal simplicity, not a transfer benefit
 - Stage 7 (optional): All features are informative on raw traces. If Stage 7 is attempted, use raw or fold-safe patient-baseline centered features for correlation with Corneometer
 - ~~GitHub README: draft before Week 9~~ ✓ Created (Session 7) — `README.md`, `CLAUDE.md`
 - Oral assessment format: slides, demo, or both?
@@ -213,3 +231,4 @@ Confirms the normalization decision: feature z-score (GKF AUC 0.822) ties patien
 | 5 (Week 8) | Completed Stages 4 and 5. Fixed normalization leakage by moving baseline fitting inside each CV fold. Identified backfill confound in Stage 4 (several patients have <10 genuine timesteps). |
 | 6 (Week 8 update) | Reordered stages 2/3 (features before normalization). Replaced min-max with RobustScaler. Switched z-score and robust scaler to feature-level (fold-safe StandardScaler/RobustScaler). All six features now non-zero importance on raw traces (Mean=0.257, Median=0.229, Slope=0.179). Fold-safe patient-baseline centering gives LOSO AUC 1.000 but threshold accuracy 0.654. |
 | 7 (Week 9) | Created `CLAUDE.md` + `README.md`. Verified instructor's AUC concern: no leakage; the "1.000" is a degenerate 1-vs-1-per-fold metric (= ranking 13/13); real discriminability is GroupKFold 0.817 / pooled-LOSO 0.775 (`src/verify_loso_auc.py`). Resolved normalization (z-score primary). Reactivated 1D CNN as two tracks (from-scratch baseline + self-supervised transfer learning) for the oral; identified WESAD EDA + UCR/UEA as pretraining sources. Removed duplicate `per_patient_prediction_table.csv`. Corrected stale LOSO/GroupKFold numbers in progress-log and concept-glossary. Did NOT edit submitted `progress_update.md`. Verified refs: Forman & Scholz 2010, Airola et al. 2011, Fawaz 2018. **Then:** (Task 1) expanded Stage 3 to report GroupKFold n=5 + pooled-LOSO AUC alongside LOSO. (Task 2) built `src/stage6_cnn_trackA.py` — from-scratch TinyCNN (5 seeds) ties/beats SVM with no overfit, so (Task 3) Track B was NOT triggered per the pre-registered condition. |
+| 8 (report deadline, 2026-06-05) | Implemented Stage 6 Track B (`src/stage6_cnn_trackB.py`). Downloaded WESAD (Kaggle, 15 subjects, ~2.5 GB), extracted and verified pkl structure. Pretrained TinyAE (Conv1d autoencoder, MSE reconstruction, no stress labels) on 2889 WESAD EDA windows (4 Hz→1 Hz, 30-s segments). Froze encoder, fine-tuned new head on 26 IDC traces, 5 seeds, LOSO+GKF. Result: GKF AUC 0.827 ± 0.022 — above SVM (0.822) but below CNN-scratch (0.871). Transfer does not help; frozen EDA encoder slightly hurts LOSO acc (0.715 vs 0.769). Confirms Track A mechanism (mean level is the signal; richer temporal init doesn't improve it). Saved results/stage6_cnn_trackB.png + _metrics.csv. |

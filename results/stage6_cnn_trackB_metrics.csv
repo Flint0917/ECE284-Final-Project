@@ -1,0 +1,5 @@
+model,train_acc,loso_acc,loso_f1,gkf_acc,gkf_auc,pooled_loso_auc,loso_rank
+CNN-transfer (Track B),0.726+/-0.036,0.715+/-0.039,0.626+/-0.077,0.757+/-0.062,0.827+/-0.022,0.773+/-0.008,0.985+/-0.031
+CNN-jitter (Track A),-,0.777,-,-,0.889,0.815,-
+CNN-scratch (Track A),-,0.769,-,-,0.871,0.808,-
+SVM (feature z-score),-,0.769,-,-,0.822,0.781,-
