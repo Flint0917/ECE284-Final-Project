@@ -83,9 +83,6 @@ df = pd.DataFrame(records)
 df["paper_num"] = df["patient"].map(patient_map)
 df = df.sort_values(["paper_num", "label"], ignore_index=True)
 
-# ---------------------------------------------------------------------------
-# Feature extraction and trace-level normalization helpers
-# ---------------------------------------------------------------------------
 t30 = np.arange(30)
 
 FEATURE_NAMES = ["mean", "std", "median", "range", "slope", "skewness"]
@@ -185,9 +182,6 @@ X_trace_minmax = np.array([
 groups = df["patient"].values
 labels = df["label"].values
 
-# ---------------------------------------------------------------------------
-# Shared per-fold feature transform (fold-safe; fit on TRAIN indices only)
-# ---------------------------------------------------------------------------
 def transform_fold(method, train_idx, test_idx):
     """Return (X_train, X_test) feature matrices for one CV fold.
 
@@ -251,9 +245,6 @@ def run_cv(method, splitter):
     return accs, f1s, aucs, pooled_auc
 
 
-# ---------------------------------------------------------------------------
-# Run both CV schemes for every normalization method
-# ---------------------------------------------------------------------------
 logo = LeaveOneGroupOut()
 gkf = GroupKFold(n_splits=5)
 
@@ -267,16 +258,12 @@ METHODS = [
 results = {}
 
 for method in METHODS:
-    # LOSO: keep accuracy/F1 and the (degenerate) per-fold AUC = pairwise ranking,
-    # plus the pooled-LOSO AUC over all 26 out-of-fold scores.
     loso_acc, loso_f1, loso_rank, loso_pooled_auc = run_cv(method, logo)
-    # GroupKFold: 4-6 samples per fold -> per-fold AUC is a real, graded AUC.
     gkf_acc, gkf_f1, gkf_auc, _ = run_cv(method, gkf)
 
     results[method] = {
         "loso_acc_mean": np.mean(loso_acc), "loso_acc_std": np.std(loso_acc),
         "loso_f1_mean": np.mean(loso_f1), "loso_f1_std": np.std(loso_f1),
-        # degenerate per-fold LOSO AUC, reported as pairwise ranking accuracy
         "loso_rank_mean": np.mean(loso_rank), "loso_rank_std": np.std(loso_rank),
         "loso_pooled_auc": loso_pooled_auc,
         "gkf_acc_mean": np.mean(gkf_acc), "gkf_acc_std": np.std(gkf_acc),
@@ -284,9 +271,6 @@ for method in METHODS:
         "gkf_auc_mean": np.mean(gkf_auc), "gkf_auc_std": np.std(gkf_auc),
     }
 
-# ---------------------------------------------------------------------------
-# Print summary
-# ---------------------------------------------------------------------------
 print(f"\n{'Method':<46}{'LOSO acc':>16}{'GKF acc':>16}"
       f"{'GKF AUC':>16}{'pooled-LOSO':>14}{'LOSO rank':>13}")
 print("-" * 121)
@@ -310,9 +294,6 @@ pd.DataFrame([
 ]).to_csv(RESULTS / "stage3_normalization_results.csv", index=False)
 print(f"\nSaved -> {RESULTS / 'stage3_normalization_results.csv'}")
 
-# ---------------------------------------------------------------------------
-# Figure: vertically stacked — GKF AUC (top) and LOSO accuracy (bottom)
-# ---------------------------------------------------------------------------
 short_labels = [
     "trace\nz-score",
     "trace\nmin-max",

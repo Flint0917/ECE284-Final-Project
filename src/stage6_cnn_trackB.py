@@ -49,7 +49,6 @@ WESAD_DIR = DATA / "wesad"
 RESULTS = ROOT / "results"
 RESULTS.mkdir(exist_ok=True)
 
-# --- References from Track A (5-seed averages) ----------------------------------
 SVM_REF   = {"gkf_auc": 0.822, "pooled_loso_auc": 0.781, "loso_acc": 0.769}
 CNN_SCRATCH = {"gkf_auc": 0.871, "pooled_loso_auc": 0.808, "loso_acc": 0.769}
 CNN_JITTER  = {"gkf_auc": 0.889, "pooled_loso_auc": 0.815, "loso_acc": 0.777}
@@ -65,10 +64,6 @@ WESAD_EDA_HZ = 4        # E4 wristband EDA sampling rate
 TARGET_HZ = 1           # IDC sensor rate; downsample WESAD to match
 WINDOW_S = 30           # seconds; matches the IDC trace length
 
-
-# ---------------------------------------------------------------------------
-# WESAD data loading
-# ---------------------------------------------------------------------------
 
 def unzip_wesad():
     """Unzip the Kaggle download if pkl files not yet extracted."""
@@ -111,20 +106,15 @@ def load_wesad_eda_windows():
         with open(fp, "rb") as f:
             raw = pickle.load(f, encoding="latin1")
 
-        # Navigate to wrist EDA (shape: (n_samples,) or (n_samples, 1))
         eda = raw["signal"]["wrist"]["EDA"].ravel().astype(np.float32)
 
-        # Downsample: reshape to blocks of `downsample_factor`, take mean
         n_complete = (len(eda) // downsample_factor) * downsample_factor
-        eda = eda[:n_complete].reshape(-1, downsample_factor).mean(axis=1)
-        # eda is now at TARGET_HZ (1 Hz)
+        eda = eda[:n_complete].reshape(-1, downsample_factor).mean(axis=1)  # 4Hz -> 1Hz
 
-        # Segment into non-overlapping WINDOW_S-sample windows
         n_windows = len(eda) // WINDOW_S
         for i in range(n_windows):
             w = eda[i * WINDOW_S : (i + 1) * WINDOW_S]
-            # Skip constant windows (e.g., sensor dropout)
-            if w.std() < 1e-6:
+            if w.std() < 1e-6:  # skip sensor dropout artifacts
                 continue
             all_windows.append(w)
 
@@ -140,10 +130,6 @@ def load_wesad_eda_windows():
           f"of {WINDOW_S} s at {TARGET_HZ} Hz  (global mean={mu:.4f} uS, std={sd:.4f} uS)")
     return windows
 
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
 
 class TinyEncoder(nn.Module):
     """Shared encoder: same Conv1d stack as Track A's TinyCNN.features."""
@@ -165,9 +151,7 @@ class TinyAE(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = TinyEncoder()
-        # Mirror decoder: Conv1d (not transposed) keeps sequence length fixed.
-        # Using Conv1d with same padding mirrors the encoder exactly, which is
-        # appropriate because no pooling reduces T in the encoder.
+        # Conv1d (not transposed): no pooling in encoder, so sequence length stays fixed.
         self.decoder = nn.Sequential(
             nn.Conv1d(16, 8, kernel_size=3, padding=1), nn.ReLU(),
             nn.Conv1d(8,  1, kernel_size=3, padding=1),
@@ -192,10 +176,6 @@ class TransferCNN(nn.Module):
         feat = self.pool(feat).squeeze(-1)     # (batch, 16)
         return self.fc(self.drop(feat))
 
-
-# ---------------------------------------------------------------------------
-# IDC data loading (same as Track A)
-# ---------------------------------------------------------------------------
 
 def load_patient_map(txt_path):
     mapping = {}
@@ -230,10 +210,6 @@ labels    = df["label"].values
 groups    = df["patient"].values
 
 
-# ---------------------------------------------------------------------------
-# Pretraining
-# ---------------------------------------------------------------------------
-
 def pretrain_ae(windows: np.ndarray, seed: int):
     """
     Train a TinyAE on WESAD EDA windows and return the pretrained encoder.
@@ -252,7 +228,6 @@ def pretrain_ae(windows: np.ndarray, seed: int):
 
     ae.train()
     for epoch in range(PRETRAIN_EPOCHS):
-        # Mini-batch shuffle
         perm = torch.randperm(n)
         epoch_loss = 0.0
         for i in range(0, n, BATCH_SIZE):
@@ -269,10 +244,6 @@ def pretrain_ae(windows: np.ndarray, seed: int):
     ae.eval()
     return ae.encoder, losses
 
-
-# ---------------------------------------------------------------------------
-# Fine-tuning helpers (same fold-safe protocol as Track A)
-# ---------------------------------------------------------------------------
 
 def standardize(X_tr, X_te):
     mu, sd = X_tr.mean(), X_tr.std()
@@ -351,10 +322,6 @@ def run_cv(splitter, encoder):
     }
 
 
-# ---------------------------------------------------------------------------
-# Main: pretrain + evaluate over 5 seeds
-# ---------------------------------------------------------------------------
-
 print("Loading WESAD EDA windows ...")
 wesad_windows = load_wesad_eda_windows()
 
@@ -362,7 +329,7 @@ logo = LeaveOneGroupOut()
 gkf  = GroupKFold(n_splits=5)
 
 seed_results = []
-pretrain_loss_curves = []   # one curve per seed for the figure
+pretrain_loss_curves = []
 
 for seed in SEEDS:
     print(f"\n--- Seed {seed} ---")
@@ -402,9 +369,6 @@ print("-" * 40)
 for col in df_res.columns:
     print(f"{col:<22}{means[col]:>8.3f}{stds[col]:>8.3f}")
 
-# ---------------------------------------------------------------------------
-# Save metrics CSV
-# ---------------------------------------------------------------------------
 rows = [
     {
         "model": "CNN-transfer (Track B)",
@@ -429,12 +393,8 @@ rows = [
 pd.DataFrame(rows).to_csv(RESULTS / "stage6_cnn_trackB_metrics.csv", index=False)
 print(f"\nSaved -> {RESULTS / 'stage6_cnn_trackB_metrics.csv'}")
 
-# ---------------------------------------------------------------------------
-# Figure: GKF AUC comparison + pretraining loss
-# ---------------------------------------------------------------------------
 fig, axes = plt.subplots(2, 1, figsize=(5, 7))
 
-# Top: GKF AUC bar chart (all four models)
 ax = axes[0]
 models     = ["SVM", "CNN-scratch", "CNN-jitter", "CNN-transfer"]
 gkf_aucs   = [
@@ -457,7 +417,6 @@ for bar, v in zip(bars, gkf_aucs):
     ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"{v:.3f}",
             ha="center", va="bottom", fontsize=8)
 
-# Bottom: pretraining loss curves (one per seed, + mean)
 ax2 = axes[1]
 loss_arr = np.array(pretrain_loss_curves)   # (5, PRETRAIN_EPOCHS)
 epochs_x = np.arange(1, PRETRAIN_EPOCHS + 1)

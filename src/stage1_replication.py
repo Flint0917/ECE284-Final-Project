@@ -15,19 +15,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Paths — ROOT is the project directory, one level above src/
-# ---------------------------------------------------------------------------
 ROOT    = Path(__file__).resolve().parent.parent
 DATA    = ROOT / "data"
 RESULTS = ROOT / "results"
 RESULTS.mkdir(exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Patient mapping: study ID (S-XX) → paper patient number (1–13)
-# File format:  "N // S-XX"  (one entry per line; header line is skipped)
-# ---------------------------------------------------------------------------
+
 def load_patient_map(txt_path: Path) -> dict:
+    # File format: "N // S-XX" per line
     mapping = {}
     with open(txt_path) as f:
         for line in f:
@@ -44,44 +39,25 @@ def load_patient_map(txt_path: Path) -> dict:
 
 patient_map = load_patient_map(DATA / "PatientNumbering.txt")
 
-# Sort study IDs by their paper number so x-axis runs 1 → 13 left-to-right
 study_ids  = sorted(patient_map, key=lambda sid: patient_map[sid])
 paper_nums = [patient_map[sid] for sid in study_ids]
 
-# ---------------------------------------------------------------------------
-# Load sensor CSVs
-# Shape: (30 rows × 13 patient columns); Time (s) column becomes the index
-# ---------------------------------------------------------------------------
-les = pd.read_csv(DATA / "lesional_sensor.csv",    index_col=0)
-non = pd.read_csv(DATA / "nonlesional_sensor.csv", index_col=0)
+les = pd.read_csv(DATA / "lesional_sensor.csv",    index_col=0).ffill()
+non = pd.read_csv(DATA / "nonlesional_sensor.csv", index_col=0).ffill()
 
-# Forward-fill NaN within each patient column (project standard)
-les = les.ffill()
-non = non.ffill()
-
-# ---------------------------------------------------------------------------
-# Per-patient statistics across the 30 time points
-# mean() / std() operate column-wise (axis=0) → one value per patient
-# std = temporal variability of capacitance within the single 30-s trace
-# ---------------------------------------------------------------------------
 les_mean = les.mean()
 les_std  = les.std()
 non_mean = non.mean()
 non_std  = non.std()
 
-# Extract in paper-number order
 lm = [les_mean[sid] for sid in study_ids]
 ls = [les_std[sid]  for sid in study_ids]
 nm = [non_mean[sid] for sid in study_ids]
 ns = [non_std[sid]  for sid in study_ids]
 
-# ---------------------------------------------------------------------------
-# Grouped bar chart — two bars per patient, error bars = ±1 std
-# ---------------------------------------------------------------------------
 x     = np.arange(len(paper_nums))
 width = 0.38
 
-# Colours taken from Todorov's OriginPro palette (red=lesional, blue=non-lesional)
 LESIONAL_COLOR    = "#f14040"
 NONLESIONAL_COLOR = "#1a6fdf"
 ERR_KW = dict(elinewidth=1.2, ecolor="black", capsize=4)
@@ -111,9 +87,6 @@ out = RESULTS / "stage1_replication.png"
 plt.savefig(out, dpi=150)
 print(f"Saved → {out}")
 
-# ---------------------------------------------------------------------------
-# Metrics summary printed to console
-# ---------------------------------------------------------------------------
 header = f"{'Patient':>8}  {'Les mean (pF)':>14}  {'Les std':>8}  {'Non mean (pF)':>14}  {'Non std':>8}"
 print("\n" + header)
 print("-" * len(header))

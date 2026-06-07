@@ -1,33 +1,14 @@
 """
 Stage 6 — Track A: from-scratch 1D CNN vs the SVM baseline.
 
-Goal (tied to motivation Q2, generalization under data scarcity): test whether an
-end-to-end 1D CNN, learning directly from the raw 30-point trace, can match the
-handcrafted-feature SVM under the SAME patient-aware evaluation. The CNN receives
-strictly MORE information than the SVM's 6 summary features, so if it still loses,
-the cause is the small-N learning problem, not an information deficit.
+Tests whether an end-to-end CNN on raw 30-pt traces can match the 6-feature SVM
+under the same patient-aware evaluation. CNN gets strictly more information than the
+SVM; if it still barely edges ahead, the discriminative signal is simple (level, not
+shape). Multi-seed (5) with a fresh model per fold controls for seed sensitivity at N=26.
 
-Design decisions (and why):
-  - Input: raw 30-pt trace, standardized per fold with the TRAINING global mean/std
-    (fold-safe). Standardizes scale for stable optimization without destroying the
-    within-trace shape the CNN is meant to learn.
-  - Architecture: 2x Conv1d (8->16 ch, k=3) -> global average pool -> dropout -> FC(2).
-    A "reasonable small CNN" a student would actually try — small enough to run, not
-    artificially crippled, so any overfitting is honest.
-  - Two variants: (1) from scratch, (2) from scratch + jittering augmentation
-    (training-only Gaussian noise, sigma on the standardized/unit-variance scale).
-    Directly tests whether augmentation mitigates small-N overfitting.
-  - Evaluation: the SAME schemes as the SVM — LOSO (acc/F1 + pairwise ranking),
-    GroupKFold n=5 (headline AUC), pooled-LOSO AUC.
-  - Multi-seed: a CNN on ~24 training samples is highly seed-sensitive, so a single
-    run could show "overfits and loses" or "ties SVM" by luck. We run 5 seeds, with a
-    FRESH model per fold per seed, and base every conclusion on the seed-averaged result.
-  - Report train accuracy explicitly: distinguishes OVERFIT (train high, test low) from
-    UNDERFIT (both low). Both support "small data is the bottleneck" but are different
-    stories; we name the mechanism after seeing the gap.
-
-Track B (transfer learning) is triggered only if the seed-averaged CNN is meaningfully
-worse than the SVM AND shows a large train-test gap (pre-registered below).
+Two variants: baseline + jitter augmentation (training-only Gaussian noise). Train
+accuracy reported alongside test to distinguish overfit from underfit — both are
+informative but different diagnoses of the small-N bottleneck.
 
 Outputs:
   results/stage6_cnn_trackA.png
@@ -62,9 +43,6 @@ DROPOUT = 0.3
 JITTER_SIGMA = 0.2         # on the standardized (unit-variance) input scale
 
 
-# ---------------------------------------------------------------------------
-# Data loading (identical convention to the other stages)
-# ---------------------------------------------------------------------------
 def load_patient_map(txt_path):
     mapping = {}
     with open(txt_path) as f:
@@ -98,9 +76,6 @@ labels = df["label"].values
 groups = df["patient"].values
 
 
-# ---------------------------------------------------------------------------
-# Model
-# ---------------------------------------------------------------------------
 class TinyCNN(nn.Module):
     """2x Conv1d -> global average pool -> dropout -> linear(2)."""
 
@@ -199,16 +174,11 @@ def run_cv(splitter, jitter):
     }
 
 
-# ---------------------------------------------------------------------------
-# Run: 5 seeds x 2 variants x {LOSO, GroupKFold}
-# ---------------------------------------------------------------------------
 logo = LeaveOneGroupOut()
 gkf = GroupKFold(n_splits=5)
 VARIANTS = [("CNN-scratch", False), ("CNN-jitter", True)]
 
-# seed_results[variant] = list of per-seed summary dicts
 seed_results = {name: [] for name, _ in VARIANTS}
-# per-seed pooled LOSO scores for ROC curve averaging
 seed_loso_scores = {name: [] for name, _ in VARIANTS}
 seed_loso_labels = {name: [] for name, _ in VARIANTS}
 
@@ -238,9 +208,6 @@ def agg(name):
 
 summary = {name: agg(name) for name, _ in VARIANTS}
 
-# ---------------------------------------------------------------------------
-# Print + verdict
-# ---------------------------------------------------------------------------
 print(f"\nSVM reference (feature z-score): LOSO acc {SVM_REF['loso_acc']:.3f} | "
       f"GKF acc {SVM_REF['gkf_acc']:.3f} | GKF AUC {SVM_REF['gkf_auc']:.3f} | "
       f"pooled-LOSO AUC {SVM_REF['pooled_loso_auc']:.3f}")
@@ -274,9 +241,6 @@ print(f"Large train-test gap (> {TRACKB_GAP_MIN}): {big_gap}")
 print(f"\n>>> Track B (transfer learning) triggered: {auc_loses and big_gap} "
       f"[pre-registered: AUC loses AND large gap]")
 
-# ---------------------------------------------------------------------------
-# Save metrics
-# ---------------------------------------------------------------------------
 rows = []
 for name, _ in VARIANTS:
     s = summary[name]
@@ -297,14 +261,6 @@ rows.append({"model": "SVM (feature z-score, ref)", "train_acc": "-",
 pd.DataFrame(rows).to_csv(RESULTS / "stage6_cnn_trackA_metrics.csv", index=False)
 print(f"\nSaved -> {RESULTS / 'stage6_cnn_trackA_metrics.csv'}")
 
-# ---------------------------------------------------------------------------
-# Figure: vertically stacked — jitter augmentation effect (top),
-# train vs test accuracy / overfit diagnostic (bottom).
-# (The SVM-vs-CNN GKF AUC comparison lives in the Track B figure, which
-# already needs all four models side by side — repeating it here would be
-# redundant, so Track A's figure instead isolates what's unique to it: the
-# augmentation ablation and the overfitting check.)
-# ---------------------------------------------------------------------------
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

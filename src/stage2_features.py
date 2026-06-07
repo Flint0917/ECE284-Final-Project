@@ -27,9 +27,6 @@ DATA    = ROOT / "data"
 RESULTS = ROOT / "results"
 RESULTS.mkdir(exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Patient map and data loading
-# ---------------------------------------------------------------------------
 def load_patient_map(txt_path):
     mapping = {}
     with open(txt_path) as f:
@@ -59,9 +56,6 @@ df["paper_num"] = df["patient"].map(patient_map)
 # Sort: patient 1→13, lesional (1) before non-lesional (0) within each patient
 df = df.sort_values(["paper_num", "label"], ascending=[True, False], ignore_index=True)
 
-# ---------------------------------------------------------------------------
-# Raw feature extraction
-# ---------------------------------------------------------------------------
 t = np.arange(30)
 
 FEATURE_NAMES = ["Mean", "Std", "Median", "Range", "Slope", "Skewness"]
@@ -76,19 +70,12 @@ def extract_features(trace):
         float(skew(trace)),
     ]
 
-# The project brief asks for mean/std/median/range/slope/skewness from each
-# trace. These must be computed on the raw signal; per-trace z-scoring would
-# force mean ~= 0 and std ~= 1 for every sample by construction.
+# Raw traces required — per-trace z-score forces mean/std constant, making them useless as features.
 X = np.array([extract_features(row["trace"]) for _, row in df.iterrows()])
 y = df["label"].values
 
-# ---------------------------------------------------------------------------
-# Random Forest feature importance
-# Fitted on all 26 samples — with N=26 this is illustrative rather than
-# definitive, but gives a useful relative ranking of the 6 features.
-# "Mean decrease in impurity" measures how much each feature reduces
-# uncertainty in the forest's decision nodes on average.
-# ---------------------------------------------------------------------------
+# Random Forest importance (N=26 → illustrative, not definitive).
+# Mean decrease in impurity = how much each feature reduces node uncertainty on average.
 rf = RandomForestClassifier(n_estimators=200, random_state=42)
 rf.fit(X, y)
 
@@ -111,12 +98,6 @@ row_labels = [
 heatmap_df = pd.DataFrame(X_std, index=row_labels, columns=FEATURE_NAMES)
 tick_colors = ["#f14040" if lbl == 1 else "#1a6fdf" for lbl in df["label"].values]
 
-# ---------------------------------------------------------------------------
-# Two-panel figure — stacked vertically for the 2-column report layout:
-#   top:    heatmap of per-trace feature values
-#   bottom: feature importance, drawn as a horizontal-layout bar chart
-#           (vertical bars across the now wide-relative-to-tall panel)
-# ---------------------------------------------------------------------------
 fig = plt.figure(figsize=(7, 13))
 gs  = gridspec.GridSpec(2, 1, height_ratios=[2.0, 1], hspace=0.45, figure=fig)
 
@@ -131,7 +112,7 @@ sns.heatmap(
     cbar_kws={"label": "Standardized feature value", "shrink": 0.75},
     yticklabels=True,
 )
-ax_hm.set_aspect("auto")
+ax_hm.set_aspect("auto")  # prevent seaborn from centering axes with blank gaps
 ax_hm.set_title(
     "Feature Values per Trace — raw features standardised for display\n"
     "(red y-labels = Lesional, blue = Non-Lesional)",
