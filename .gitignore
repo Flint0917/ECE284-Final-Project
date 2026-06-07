@@ -90,3 +90,12 @@ WearSystemIDCforAD/
 # Local test outputs (if needed)
 .tmp/
 temp/
+
+# Project-internal docs (not for public repo)
+CLAUDE.md
+supplements/
+
+# Draft report copies
+report_edited.tex
+report_edited*.tex
+report(*.tex

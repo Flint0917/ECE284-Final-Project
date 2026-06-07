@@ -1,30 +1,30 @@
 % ============================================================
 %  ECE284 Final Project Report
-%  Format: ACM acmtog (Large 2-column) — matches the provided template PDF.
-%  To switch to sigconf (conference proceedings), change acmtog → sigconf.
-%  Target: 7–10 pages.
+%  Format: ACM acmtog, large 2-column, matching the provided template PDF.
+%  To switch to sigconf, change acmtog to sigconf.
+%  Target: 7--10 pages.
 % ============================================================
 \documentclass[acmtog]{acmart}
 
-% ------ Packages ------
+% Packages
 \usepackage{booktabs}       % \toprule / \midrule / \bottomrule
 \usepackage{graphicx}
 \usepackage{multirow}
 \usepackage{xcolor}
-% amssymb is already loaded by acmart — do not re-load it
+% amssymb is already loaded by acmart, so do not re-load it
 % \checkmark is available via amssymb which acmart imports internally
 \usepackage{microtype}      % Better text spacing in 2-col
 
-% ------ Suppress ACM boilerplate for course submission ------
+% Suppress ACM boilerplate for course submission
 \settopmatter{printacmref=false}
 \renewcommand\footnotetextcopyrightpermission[1]{}
 \AtBeginDocument{\pagestyle{plain}}
 
-% ------ Convenience: placeholder box for missing figures ------
+% Convenience: placeholder box for missing figures
 % Usage: \missingfig{width}{label}{script to run}
 \newcommand{\missingfig}[3]{%
   \fbox{\begin{minipage}{#1}\centering\vspace{0.8em}
-    {\small\textcolor{red}{[Figure missing --- run \texttt{#3}]}}\\[0.4em]
+    {\small\textcolor{red}{[Figure missing: run \texttt{#3}]}}\\[0.4em]
     {\footnotesize\textit{#2}}\vspace{0.8em}
   \end{minipage}}%
 }
@@ -33,23 +33,41 @@
 \title{Proof-of-Concept Lesional Skin Classification with\\
        IDC Wearable Sensors under Data Scarcity}
 
-\author{[Juqy Chen]}
+\author{Juqy Chen}
 \affiliation{
   \institution{University of California San Diego}
   \department{Electrical and Computer Engineering}
+  \city{San Diego}
+  \state{California}
+  \country{USA}
 }
-\email{[juc052]@ucsd.edu}
+\email{juc052@ucsd.edu}
 
 % ============================================================
 \begin{document}
 
 \begin{abstract}
-Continuous monitoring of Atopic dermatitis (AD) through wearable interdigitated capacitive (IDC) sensors offers a non-invasive physiological proxy for skin barrier integrity. However, existing datasets present a severe data-scarcity challenge; the only publicly available corpus contains just 13 patients, each providing only two 30-second traces (one lesional and one non-lesional). I present a proof-of-concept
-classification pipeline on this corpus and address two testable questions:
-whether a short trace prefix captures sufficient discriminative signal, and
-whether a machine learning model can generalize across unseen patients without relying on population-level thresholding. Six statistical features (mean, median, slope, std, range, skewness) extracted from raw traces and normalized with feature-level z-score inside each LOSO fold yield a LinearSVC with GroupKFold AUC of 0.822 and
-pairwise ranking accuracy of 13/13 held-out patients. A compact 1D CNN with
-Global Average Pooling matches and slightly exceeds the SVM (GKF AUC 0.871), confirming that the discriminative signal is the per-site mean capacitance level rather than complex temporal dynamics. Self-supervised pretraining on domain-adjacent electrodermal activity (EDA) data from WESAD followed by frozen-layer transfer (Track B) yields GKF AUC 0.827 --- above the SVM but below the from-scratch CNN --- indicating that the EDA--IDC sensor physics gap limits transfer benefit at $N{=}26$ traces. Finally, an analysis of measurement duration reveals that early-trace classification advantages stem from a data-quality confound—specifically, forward-filling in several traces—rather than a genuine clinical advantage of shorter measurement durations. These results confirm the viability of personalized, intra-individual tracking for AD, though population-level validation demands a substantially larger and more complete dataset.
+Continuous monitoring of atopic dermatitis (AD) with wearable interdigitated
+capacitive (IDC) sensors offers a non-invasive proxy for skin barrier integrity,
+but public data remain scarce. The available corpus contains 13 patients, each
+with one 30-second lesional trace and one 30-second non-lesional trace. This
+report evaluates whether short trace prefixes contain enough discriminative
+signal and whether models can generalize to unseen patients without relying on
+a population-wide threshold. Six raw-trace statistical features normalized within
+each leave-one-subject-out (LOSO) fold yield a LinearSVC with GroupKFold AUC
+0.822 and correct pairwise ranking for all 13 held-out patients. A compact 1D
+CNN with Global Average Pooling slightly improves GroupKFold AUC to 0.871,
+suggesting that both models mainly use per-site mean capacitance rather than
+complex temporal structure. Self-supervised pretraining on WESAD electrodermal
+activity (EDA) data followed by frozen-layer transfer reaches GroupKFold AUC
+0.827, which is above the SVM but below the from-scratch CNN, indicating that
+the EDA-to-IDC sensor-physics gap limits transfer at $N{=}26$ traces. The
+window-length experiment shows that the apparent advantage of early prefixes is
+driven by missing post-10 s samples in S-02, S-03, and S-04 that become constant
+after forward-fill preprocessing, not by evidence that shorter measurements are
+clinically superior. Overall, the results support personalized intra-individual AD
+tracking, while population-level validation requires a larger and cleaner IDC
+dataset.
 
 \end{abstract}
 
@@ -59,200 +77,210 @@ Global Average Pooling matches and slightly exceeds the SVM (GKF AUC 0.871), con
 
 % ============================================================
 \section{Motivation}\label{sec:motivation}
-Atopic dermatitis (AD) is one of the most prevalent chronic inflammatory skin
-diseases, affecting approximately 15--20\% of children and 2--10\% of adults
-worldwide \cite{sanchez2019atopic}. Characterized by persistent skin barrier
-dysfunction, intense itchiness, and recurrent flares, AD requires ongoing
-monitoring to assess disease activity and guide treatment. Traditional clinical
-assessment relies on in-person evaluations that lack longitudinal tracking between
-clinic visits, and many patients struggle to convey their condition precisely to
-clinicians. Even the standard clinical score, the Eczema Area and Severity Index
-(EASI), shows only moderate inter-observer reliability \cite{khan2024skin}; combined
-with the day-to-day fluctuation of AD severity, this makes a single clinic visit an
-unreliable snapshot and motivates continuous, at-home monitoring.
- 
-Among wearable approaches, behavioral itch sensing (for example, wrist actigraphy for
-scratch) is the best-evidenced family, but it captures a behavioral proxy downstream
-of the disease; barrier-function capacitance instead measures the physiological state
-of the skin directly and continuously, making longitudinal physiological tracking
-possible. This motivates the focus of this work on the interdigitated capacitive
-(IDC) sensor of Todorov et al.\ \cite{todorov2025wearable}. By measuring the dielectric
-permittivity of skin at the sensor interface, IDC devices provide a proxy for skin
-hydration and barrier integrity --- both key indicators of AD severity. The system
-samples skin capacitance at 1\,Hz over a 30-second contact window, producing a compact
-time-series trace per measurement site. Non-lesional skin consistently exhibits higher
-capacitance than lesional skin due to differences in stratum corneum hydration, and the
-sensor captures this contrast without any chemical reagents or clinical-grade equipment.
- 
-Despite this promise, publicly available IDC datasets for AD patients remain
-extremely limited. To our knowledge, the Todorov et al.\ \cite{todorov2025wearable}
-corpus is the only public dataset pairing IDC traces with AD lesional labels:
-13 patients, each contributing one 30-second lesional trace and one non-lesional
-trace (26 traces total). No second IDC-on-AD dataset exists for cross-dataset
-validation. This extreme data scarcity --- $N{=}13$ patients, binary per-patient
-labeling --- makes standard supervised learning difficult to apply and motivates
-a rigorous evaluation strategy that prevents patient identity leakage.
- 
-Within this constraint, two testable questions drive the experimental design.
-(1) Is a short trace prefix sufficient for classification, or does extending the
-measurement window improve discrimination? Todorov et al.\ \cite{todorov2025wearable}
-established lesional/non-lesional separability and 30-second stability but did not test
-whether fewer than 30 seconds suffice. They report a slight capacitance drift in the
-first 5--10 seconds, attributed to the skin conforming around the sensor; later samples
-may therefore carry the genuine physiological signal, though the reverse is also possible
-if some traces contain only a few seconds of real data before forward-filling.
-(2) Can a model trained on a subset of patients correctly rank lesional above
-non-lesional skin for an entirely unseen patient, without any population-wide threshold?
-This directly tests the intra-individual tracking capability that Todorov et al.\ highlight
-as the practical use case for their sensor, which they did not quantify across patients.
- 
+Atopic dermatitis (AD) is a common chronic inflammatory skin disease, affecting
+approximately 15--20\% of children and 2--10\% of adults worldwide
+\cite{sanchez2019atopic}. It is marked by impaired skin-barrier function, itch,
+and recurrent flares, so disease severity can change substantially between
+clinic visits. Clinical assessment also depends on observer judgment. The Eczema
+Area and Severity Index (EASI), for example, has only moderate inter-observer
+reliability \cite{khan2024skin}. These limitations motivate continuous,
+at-home monitoring.
+
+Wearable systems for AD commonly measure behavior, such as scratching, or skin
+barrier function. Behavioral sensing is useful but indirect. In contrast,
+capacitance-based barrier sensing targets the physiological state of the skin.
+This report focuses on the interdigitated capacitive (IDC) sensor introduced by
+Todorov et al.\ \cite{todorov2025wearable}. The device measures dielectric
+permittivity at the skin interface, providing a proxy for hydration and barrier
+integrity. It samples capacitance at 1\,Hz over a 30-second contact window.
+Todorov et al.\ showed that non-lesional skin usually has higher capacitance
+than lesional skin within the same patient.
+
+The central limitation is data availability. To my knowledge, the Todorov et al.\
+corpus is the only public IDC dataset with AD lesional labels. It includes 13
+patients, each with one lesional and one non-lesional trace, for 26 total traces.
+This small sample makes ordinary supervised learning fragile and makes
+patient-level leakage a major risk.
+
+Two questions guide the experiments. First, is a short trace prefix sufficient
+for classification, or does the full 30-second window improve discrimination?
+Todorov et al.\ reported early contact-settling drift but did not test shorter
+windows. Second, can a model trained on other patients correctly rank the
+lesional and non-lesional sites for a held-out patient without using a
+population-wide threshold? This directly tests the intra-individual tracking use
+case emphasized by Todorov et al.
+
 % ============================================================
 \section{Related Work}\label{sec:related}
- 
-\subsection*{The landscape of AD wearable sensing}
-Khan et al.\ \cite{khan2024skin} present a systematic review of AD wearables and group
-them into three families: behavioral/itch sensing (actigraphy, smartwatches), surface
-barrier-function sensing (e-textiles, capacitance, TEWL), and intradermal sensing
-(microneedles, ISF biomarkers). Behavioral itch sensing is the best-evidenced family,
-but the IDC sensor used in this work belongs to the surface barrier-function family,
-which targets skin pathology more directly. Across the field, few of the surveyed
-systems release public data, so a publicly available, labeled IDC corpus is a
-precondition for the supervised learning pursued here.
- 
+
+\subsection*{AD wearable sensing}
+Khan et al.\ \cite{khan2024skin} review AD wearables across behavioral/itch
+sensing, surface barrier-function sensing, and intradermal sensing. The IDC
+sensor studied here belongs to the surface barrier-function category, which is
+more directly tied to skin pathology than scratch behavior. Because few systems
+release labeled public data, the Todorov corpus is unusually valuable despite
+its small size.
+
 \subsection*{IDC sensors and skin capacitance}
 Todorov et al.\ \cite{todorov2025wearable} introduced a printed IDC sensor for
-wearable AD monitoring and demonstrated that non-lesional skin capacitance
-consistently exceeds lesional capacitance at the individual patient level.
-They report Corneometer correlations confirming that capacitance tracks skin
-hydration, and note explicitly that a population-wide threshold cannot
-distinguish lesional from non-lesional skin across patients due to inter-patient
-baseline variation. Our work formalizes this observation through leave-one-subject-out
-cross-validation and adds a quantitative measure of cross-patient generalization.
-No second public IDC-on-AD-patients dataset exists; cross-dataset comparison was
-out of scope as available alternatives use different sensor modalities.
- 
+wearable AD monitoring and showed that non-lesional capacitance exceeds
+lesional capacitance at the individual-patient level. They also reported
+Corneometer correlations, supporting capacitance as a hydration proxy. Their
+results suggest that a population-wide threshold is unreliable because baseline
+capacitance varies across patients. This project formalizes that issue with
+leave-one-subject-out validation and GroupKFold AUC.
+
 \subsection*{Machine learning on small AD datasets}
-Xing et al.\ \cite{xing2024nocturnal} offer a methodological parallel from a different
-sensing modality: wrist actigraphy for nocturnal scratch detection in a cohort of seven
-subjects, five of them with AD. Because the signal (limb motion) and target (scratch
-behavior) differ fundamentally from skin capacitance, no signal-level comparison with
-the IDC data is meaningful; the relevance is the modeling regime. On the same small
-dataset they compared a feature-engineering gradient-boosting model against a 1D CNN,
-and the gradient-boosting model achieved a higher minority-class F1 (0.45 vs.\ 0.39),
-which they attribute to the small sample favoring a lower-capacity model with fewer
-hyperparameters. This is consistent with the data-scarcity framing of our
-SVM-versus-CNN comparison (Section~\ref{sec:cnn_a}): rather than the deep model
-realizing its usual advantage, the two paradigms converge, indicating that AD datasets
-of this size do not yet justify the added capacity of end-to-end deep learning.
+Xing et al.\ \cite{xing2024nocturnal} provide a useful small-data comparison
+from nocturnal scratch detection. In a seven-subject wrist-actigraphy dataset,
+a feature-engineered gradient-boosting model outperformed a 1D CNN on
+minority-class F1 (0.45 vs.\ 0.39). Although the sensing modality differs from
+IDC capacitance, the result supports the same methodological caution: with very
+small AD datasets, lower-capacity feature-based models can match or exceed
+end-to-end deep learning.
 
 % ============================================================
 \section{Project Aim}\label{sec:aim}
-This work pursues three concrete aims within the data-scarcity constraint of the
-Todorov et al.\ \cite{todorov2025wearable} corpus. All results are framed as
-proof-of-concept findings on $N{=}13$ patients and are not intended as clinical validation.
+This work has three aims within the data constraint of the Todorov et al.\
+\cite{todorov2025wearable} corpus. All results are proof-of-concept findings on
+$N{=}13$ patients, not clinical validation.
 
 \begin{enumerate}
   \item \textbf{Replication.} Reproduce the per-patient non-lesional $>$ lesional
-        capacitance ordering reported in Todorov et al.\ Fig.\ 9(a), confirming
-        dataset integrity and establishing the baseline visual separation.
-  \item \textbf{Cross-patient generalization.} Quantify the gap between
-        intra-individual tracking accuracy (LOSO pairwise ranking) and
-        population-level threshold accuracy, and establish GroupKFold AUC as
-        the honest discriminability metric under data scarcity.
-  \item \textbf{End-to-end learning under scarcity.} Compare a six-feature
-        LinearSVC against a compact 1D CNN (Track A, from-scratch) to test whether
-        temporal modeling adds value beyond mean-level statistics, and assess
-        whether self-supervised EDA pretraining followed by frozen-layer transfer
-        (Track B) can improve on the from-scratch CNN at $N{=}26$ traces.
+        capacitance ordering from Todorov et al.\ Fig.\ 9(a).
+  \item \textbf{Cross-patient generalization.} Quantify the difference between
+        intra-individual pairwise ranking and population-level threshold accuracy,
+        using GroupKFold AUC as the main discriminability metric.
+  \item \textbf{Learning under scarcity.} Compare a six-feature LinearSVC with a
+        compact 1D CNN and test whether self-supervised EDA pretraining improves
+        IDC classification at $N{=}26$ traces.
 \end{enumerate}
 
 % ============================================================
 \section{Methodology}\label{sec:methodology}
 
+
 \subsection{Dataset}
-The dataset was introduced by Todorov et al.\ \cite{todorov2025wearable}. Thirteen
-AD patients each contributed two 30-second IDC capacitance traces sampled at 1\,Hz
-(30 samples per trace): one from a lesional site and one from a non-lesional site,
-yielding 26 traces in total. Raw traces are loaded from CSV files; within-patient
-missing values are forward-filled. At least three patients (S-02, S-03, S-04) have
-genuine capacitance signal only in approximately the first 10 seconds; subsequent
-samples are forward-filled constants from the last valid measurement. This
-data-completeness confound is directly relevant to the window-length experiment
-(Section~\ref{sec:stage4}) and is discussed further in Section~\ref{sec:discussion}.
+The dataset comes from Todorov et al.\ \cite{todorov2025wearable}. Thirteen AD
+patients each contributed two 30-second IDC capacitance traces sampled at 1\,Hz:
+one lesional site and one non-lesional site, for 26 traces total. A raw-data audit
+shows that exactly three patients, S-02, S-03, and S-04, have incomplete IDC
+recordings. For these patients, both lesional and non-lesional traces contain
+valid samples only from 1 to 10 seconds, followed by missing entries from 11 to
+30 seconds. Thus, the missingness affects six of the 26 IDC traces.
+
+The preprocessing pipeline forward-fills missing sensor entries. Consequently,
+for S-02, S-03, and S-04, the final 20 seconds become repeated copies of the
+10-second value rather than genuine measurements. This data-completeness issue
+is central to the window-length analysis (Section~\ref{sec:stage4_results}).
+
 
 \subsection{Evaluation Framework}\label{sec:eval}
-Because every experiment below uses the same protocol, it is defined once here.
-Three complementary views are reported throughout. \textit{LOSO} (13 folds, one
-patient held out per fold) is the primary evaluation; because each fold contains
-exactly one lesional and one non-lesional test sample, the per-fold AUC collapses
-to a binary ranking indicator, so its mean across folds is a pairwise ranking
-accuracy rather than a graded ROC area. \textit{GroupKFold} ($n{=}5$) assigns
-2--3 patients to each test fold (4--6 samples), yielding a genuinely graded
-per-fold AUC with lower fold-to-fold variance; this is the headline
-discriminability metric. \textit{Pooled-LOSO AUC} concatenates all 26 LOSO test
-scores into a single ROC curve; following Airola et al.\ \cite{airola2011comparison},
-pooled leave-one-out AUC is a negatively biased estimator of true discriminability,
-so it is reported only as a reference check. To prevent patient-identity leakage,
-all feature scalers and baseline estimators are fit on training-fold data only,
-with held-out patients receiving a training global-mean fallback.
+All experiments use patient-safe evaluation. \textit{LOSO} has 13 folds, with
+one patient held out per fold. Since each test fold has one lesional and one
+non-lesional sample, LOSO AUC reduces to a binary pairwise-ranking indicator and
+should not be compared with ordinary multi-sample AUC values. \textit{GroupKFold}
+($n{=}5$) places 2--3 patients in each test fold, producing a graded fold-level
+AUC with lower variance. This is the main discriminability metric.
+\textit{Pooled-LOSO AUC} concatenates all LOSO test scores into one ROC curve
+and is reported only as a reference because pooled leave-one-out AUC is
+negatively biased \cite{airola2011comparison}. All scalers and baseline
+estimators are fit only on training-fold data.
+
+When patient-baseline centering is evaluated under strict cross-patient testing,
+the held-out patient receives a training global-mean fallback. This choice is
+intentionally conservative because it prevents the held-out patient's baseline
+from entering the fitted normalization parameters. It is not proposed as the
+best deployment strategy. In a real paired-site measurement setting, a new
+patient's own unlabeled lesional and non-lesional candidate traces could be
+centered together before classification.
 
 \subsection{Feature Extraction (Stage 2)}
-Six statistical features are extracted per trace: mean, standard deviation, median,
-range (max$-$min), slope (ordinary least squares linear regression coefficient over
-time), and skewness. 
-
-% reasoning for the six features (independent of the review): summary statistics are a standard,
-% low-variance representation for very short series (30 samples). The six capture level (mean,
-% median), spread (std, range), trend (slope), and asymmetry (skewness); Stage 2 RF importances
-% (Table~\ref{tab:feature_importance}) then show which dominate. Expand into your own sentence.
-
-Features are computed on raw, un-normalized traces so that all six carry non-zero discriminative information. Computing features after trace-level z-score normalization reduces mean and median to constants across all traces, eliminating the two highest-importance features; extracting from raw traces avoids this. Random Forest feature importances on the full $N{=}26$ dataset are reported in Table~\ref{tab:feature_importance} and Figure~\ref{fig:stage2}.
+Each trace is represented by six summary features: mean, standard deviation,
+median, range (max$-$min), slope from ordinary least squares regression over
+time, and skewness. Features are computed from raw traces because trace-level
+z-score normalization would force all trace means to zero and remove the
+highest-importance features. Random Forest feature importances are reported in
+Table~\ref{tab:feature_importance} and Figure~\ref{fig:stage2}.
 
 \subsection{Normalization Comparison (Stage 3)}
-Forman and Scholz \cite{forman2010apples} demonstrated that normalization choices
-in cross-validation studies introduce substantial bias when scalers are fit on the
-full dataset rather than the training fold alone. I apply this principle strictly:
-all feature scalers (StandardScaler, RobustScaler) and patient-baseline estimators
-are fit exclusively on training-fold data, with unseen test patients receiving a
-training global-mean fallback. Trace-level z-score normalization destroys the mean
-and median features that carry the primary discriminative signal in this dataset;
-feature-level normalization preserves them. Five normalization strategies are compared: feature-level z-score (StandardScaler), feature-level RobustScaler (median/IQR), fold-safe patient-baseline centering, trace-level z-score, and trace-level min-max. For patient-baseline centering, the per-patient mean is estimated from training-fold traces only; the held-out test patient receives the training global-mean as a fallback. This fold-safe design was verified: in 0 of 13 LOSO folds did the test patient's own data contribute to its baseline estimate. The LOSO ``AUC 1.000'' for patient-baseline normalization (reported in earlier stages) is a degenerate 2-sample-per-fold metric equal to the pairwise ranking fraction; GroupKFold AUC is used as the honest discriminability comparison (Table~\ref{tab:normalization}).
+Cross-validation estimates can be biased when normalization is fit on the full
+dataset \cite{forman2010apples}. Therefore, all feature scalers and
+patient-baseline estimators are fit within the training fold only. Five
+strategies are compared: feature-level z-score, feature-level RobustScaler,
+fold-safe patient-baseline centering, trace-level z-score, and trace-level
+min-max. GroupKFold AUC is used for the main comparison
+(Table~\ref{tab:normalization}).
 
 \subsection{Window Length Experiment}\label{sec:stage4}
-Sixteen window configurations are evaluated: prefix windows (0$\to$5, 10, 15, 20,
-25, 30\,s) and two post-settling families (5$\to$N and 10$\to$N\,s). A LinearSVC
-with feature-level z-score normalization is evaluated under LOSO for each
-configuration, with features re-extracted independently per window. The experiment
-tests whether early contact-settling drift in the capacitance signal dominates
-classification or whether additional post-settling signal improves discrimination.
-As discussed in Section~\ref{sec:stage4_results}, post-settling windows for several
-patients consist entirely of forward-filled constants, which confounds this analysis.
+Sixteen window configurations are evaluated: prefix windows
+(0$\to$5, 10, 15, 20, 25, 30\,s) and post-settling windows
+(5$\to$N and 10$\to$N\,s). For each window, features are re-extracted and a
+LinearSVC with feature-level z-score normalization is evaluated under LOSO. The
+goal is to test whether early contact-settling drift dominates classification
+or whether later samples improve discrimination. The forward-filled traces
+confound this test, as discussed in Section~\ref{sec:stage4_results}.
 
 \subsection{From-Scratch 1D CNN (Track A)}\label{sec:cnn_a}
-The from-scratch CNN (Track A) tests whether end-to-end temporal modeling adds value beyond the six handcrafted features, taking the raw 30-sample trace as input with no external data.
+Track A tests whether end-to-end temporal modeling adds value beyond the six
+handcrafted features. The CNN input is the raw 30-sample IDC trace after fold-safe
+standardization by the training-set global mean and standard deviation. TinyCNN
+uses two one-dimensional convolutional layers with kernel size 3 and padding 1,
+followed by Global Average Pooling, Dropout (0.3), and a two-class linear output
+layer. There is no max-pooling layer, so the temporal length remains 30 until the
+final average-pooling step. This design keeps the model small enough for the
+$N{=}26$ trace setting while still allowing local temporal filters before the
+mean-like pooling operation.
 
-TinyCNN consists of two 1D convolutional blocks (8 and 16 filters, kernel size 5,
-ReLU, MaxPool), followed by Global Average Pooling (GAP), Dropout (rate 0.3), and
-a two-class fully connected output layer. The input is a raw 30-sample IDC trace.
-Models are trained with Adam (lr\,=\,0.001) for 50 epochs. A jitter augmentation
-variant adds Gaussian noise ($\sigma = 0.5\%$ of the trace range) to training
-samples only. Both variants are evaluated with 5 independent random seeds; a fresh
-model is trained per LOSO fold per seed (65 independent training runs per variant).
-The same LOSO and GroupKFold protocol used for the SVM is applied throughout.
+Models are trained with Adam (lr\,=\,0.001) for 300 epochs. A jitter variant adds
+training-only Gaussian noise with $\sigma=0.2$ on the standardized input scale.
+Both variants are evaluated with five random seeds. For each seed and each fold,
+a fresh model is trained from scratch so that test traces from the held-out
+patient are never used during fitting.
+
+\begin{table}[t]
+  \caption{TinyCNN architecture used in Track A. Shapes omit the batch dimension.
+           The model has 466 trainable parameters.}
+  \label{tab:tinycnn_arch}
+  \centering\scriptsize
+  \begin{tabular}{@{}p{0.26\linewidth}p{0.19\linewidth}p{0.14\linewidth}p{0.27\linewidth}@{}}
+    \toprule
+    Layer & Output shape & Parameters & Role \\
+    \midrule
+    Input trace & $1\times30$ & 0 & Fold-standardized IDC sequence \\
+    Conv1d + ReLU, $1\to8$, $k{=}3$ & $8\times30$ & 32 & Local temporal filtering \\
+    Conv1d + ReLU, $8\to16$, $k{=}3$ & $16\times30$ & 400 & Higher-level 1D feature maps \\
+    Global average pool & 16 & 0 & Averages each feature map over time \\
+    Dropout, $p{=}0.3$ & 16 & 0 & Regularizes the classifier head \\
+    Linear classifier, $16\to2$ & 2 & 34 & Lesional vs. non-lesional logits \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \subsection{Self-Supervised Transfer Learning (Track B)}\label{sec:cnn_b}
-Track B reframes the data-scarcity question: rather than learning from the 26 IDC traces alone, can a model import structure from a larger external signal? Fawaz et al.\ \cite{fawaz2018transfer,fawaz2019deep} showed that transfer from a domain-similar source can compensate for small training sets, motivating a 1D convolutional backbone pretrained on a domain-adjacent signal with only the classification head fine-tuned on the IDC data. The Track B backbone is the same Conv1d encoder as TinyCNN, extended with a symmetric transposed-convolution decoder to form a 1D autoencoder.
-This autoencoder is pretrained on 2,889 non-overlapping 30-sample EDA windows
-(downsampled from 4\,Hz to 1\,Hz) from the WESAD corpus \cite{schmidt2018wesad},
-using MSE reconstruction loss on unlabeled windows. No WESAD stress or affect labels
-are used, avoiding the source--target task mismatch identified by Fawaz et
-al.\ \cite{fawaz2018transfer}. After pretraining, the decoder is discarded, the
-encoder weights are frozen, and only the FC classification head is retrained on the
-26 IDC traces under the same LOSO and GroupKFold protocol as Track A. WESAD EDA is
-selected as the pretraining source because it is a 1\,Hz skin-surface measurement
-and the most domain-adjacent publicly available signal; no second IDC-on-AD corpus
-exists. Five random seeds are used; the full pretraining and fine-tuning pipeline
-is repeated fresh for each LOSO fold and seed.
+Track B tests whether a larger external skin-signal dataset can improve learning
+from 26 IDC traces. Following the transfer-learning motivation of Fawaz et al.\
+\cite{fawaz2018transfer,fawaz2019deep}, the TinyCNN encoder is paired with a
+symmetric 1D convolutional decoder to form an autoencoder. The autoencoder is
+pretrained on 2,889 non-overlapping 30-sample WESAD EDA windows
+\cite{schmidt2018wesad}. WESAD wrist EDA is first downsampled from 4\,Hz to
+1\,Hz by block averaging, segmented into 30-second windows, and filtered to
+remove constant windows.
+
+Before MSE reconstruction pretraining, the WESAD windows are globally z-scored
+using the mean and standard deviation computed across all WESAD windows. This
+normalization prevents the autoencoder from reconstructing raw EDA amplitudes in
+microsiemens, but it is not per-window normalization and it does not use IDC
+capacitance statistics. Therefore, Track B is transfer from globally normalized
+EDA dynamics to fold-standardized IDC traces, not transfer from raw EDA amplitude
+to raw IDC capacitance. No WESAD stress or affect labels are used. After
+pretraining, the decoder is discarded, the encoder is frozen, and only the
+classification head is trained on IDC traces under the same LOSO and GroupKFold
+protocols as Track A. The autoencoder mirrors the Track A encoder with two decoder
+convolutions, $16\to8$ and $8\to1$, both using kernel size 3 and padding 1. During
+transfer, the 432 encoder parameters are frozen and only the 34-parameter
+classification head is optimized. The full pretraining and evaluation pipeline is
+repeated across five seeds.
 
 % ============================================================
 \section{Results}\label{sec:results}
@@ -275,13 +303,10 @@ is repeated fresh for each LOSO fold and seed.
   \label{fig:stage1}
 \end{figure}
 
-Figure~\ref{fig:stage1} shows the per-patient mean capacitance for lesional and
-non-lesional sites. Non-lesional capacitance exceeds lesional for every patient,
-replicating the direction and per-patient ordering of Todorov et al.\ Fig.\ 9(a).
-The advantage is consistent (2--5\,pF) but absolute levels vary by $\approx$10\,pF
-across individuals (Patient 1 $\approx$40\,pF lesional vs.\ Patient 4 $\approx$49\,pF
-lesional), confirming that a single population-wide decision threshold cannot
-reliably distinguish lesional from non-lesional skin.
+Non-lesional capacitance exceeds lesional capacitance for every patient, matching
+Todorov et al.\ Fig.\ 9(a). The within-patient gap is consistent (2--5\,pF), but
+absolute baselines vary by $\approx$10\,pF across individuals. This explains why a
+single population-wide threshold is unreliable.
 
 \subsection{Stage 2: Feature Importance}\label{sec:stage2}
 
@@ -318,13 +343,10 @@ reliably distinguish lesional from non-lesional skin.
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:feature_importance} and Figure~\ref{fig:stage2} show Random Forest
-feature importances on raw traces. All six features carry non-zero importance,
-confirming that the full feature set is preserved by extracting from un-normalized
-traces. Mean and Median rank first and second, directly reflecting the per-patient
-capacitance advantage observed in Stage 1. Slope ranks third, indicating that
-linear drift over the 30-second window differs between lesional and non-lesional
-sites and provides additional discriminative information beyond level alone.
+Mean and median are the two strongest Random Forest features, which is consistent
+with the per-patient capacitance gap in Stage 1. Slope ranks third, suggesting that
+linear drift over the 30-second contact window adds some information beyond level
+alone. All six raw-trace features remain non-zero in importance.
 
 \subsection{Stage 3: Normalization Comparison}\label{sec:stage3}
 
@@ -337,17 +359,17 @@ sites and provides additional discriminative information beyond level alone.
     \missingfig{\linewidth}{Stage 3 normalization comparison bar chart}{python src/stage3\_normalization.py}%
   }
   \caption{GroupKFold AUC and LOSO accuracy for five normalization methods
-           (LinearSVC). Feature z-score and RobustScaler tie on every metric;
-           patient-baseline ``AUC 1.000'' collapses to 0.817 under GroupKFold,
-           exposing it as a degenerate per-fold artefact.}
+           (LinearSVC). Feature z-score and RobustScaler tie on every metric.
+           Patient-baseline centering gives perfect LOSO pairwise ranking, but
+           falls to 0.817 under GroupKFold.}
   \label{fig:stage3}
 \end{figure}
 
 \begin{table*}[t]
-  \caption{Normalization comparison — LinearSVC, feature-level normalization,
-           LOSO and GroupKFold ($n{=}5$). ``LOSO rank'' is a degenerate 2-sample-per-fold
-           metric (= pairwise ranking fraction); use GKF AUC for honest
-           discriminability comparison.  $\dagger$ = artifact, not a real AUC advantage.}
+  \caption{Normalization comparison for LinearSVC with feature-level normalization,
+           LOSO and GroupKFold ($n{=}5$). GroupKFold AUC is the main
+           discriminability metric. $\dagger$ marks a pairwise LOSO ranking value,
+           not an ordinary multi-sample AUC advantage.}
   \label{tab:normalization}
   \centering\small
   \begin{tabular}{lcccccc}
@@ -399,16 +421,13 @@ sites and provides additional discriminative information beyond level alone.
   \end{tabular}
 \end{table*}
 
-Table~\ref{tab:normalization} compares all five normalization methods. Feature-level
-z-score and RobustScaler tie exactly on every metric, confirming that IQR-based
-centering offers no practical advantage over mean/std centering at $N{=}26$.
-Trace-level z-score degrades accuracy to 0.538 (near chance) because forcing
-per-trace mean to zero destroys the mean and median features that carry the primary
-signal. Patient-baseline centering achieves LOSO pairwise ranking of 13/13 but this
-is a degenerate 2-sample-per-fold metric; under GroupKFold the advantage disappears
-(0.817 vs.\ 0.822 for feature z-score). Feature-level z-score is adopted as the
-primary normalization for all subsequent stages based on its higher threshold accuracy
-(0.769) and GKF AUC (0.822).
+Feature-level z-score and RobustScaler tie on every metric, so IQR-based scaling
+adds no practical benefit at $N{=}26$. Trace-level z-score performs near chance
+because it removes the mean and median signals. Patient-baseline centering gives
+perfect LOSO pairwise ranking, but that value is a two-sample within-patient
+ranking result rather than an ordinary AUC estimate. Under GroupKFold, its AUC
+is 0.817, slightly below feature z-score (0.822). Feature-level z-score is
+therefore used in later stages.
 
 \subsection{Stage 4: Window Length}\label{sec:stage4_results}
 
@@ -421,8 +440,9 @@ primary normalization for all subsequent stages based on its higher threshold ac
     \missingfig{\linewidth}{Stage 4: window length LOSO AUC sweep}{python src/stage4\_window\_length.py}%
   }
   \caption{LOSO AUC (mean $\pm$ std) for prefix and post-settling window families.
-           Performance degrades sharply past 10 s; post-10 s windows approach
-           random due to backfill-constant segments in $\geq$3 patients.}
+           Performance degrades sharply in post-10 s windows because S-02, S-03,
+           and S-04 have missing raw samples after 10 s that become constant
+           after forward-fill preprocessing.}
   \label{fig:stage4}
 \end{figure}
 
@@ -436,34 +456,33 @@ primary normalization for all subsequent stages based on its higher threshold ac
     Family & Window & Acc & AUC \\
     \midrule
     \multirow{3}{*}{Prefix (0$\to$N)}
-      & 0–5\,s  & $0.731 \pm 0.317$ & $0.923 \pm 0.267$ \\
-      & 0–10\,s & $0.731 \pm 0.317$ & $0.846 \pm 0.361$ \\
-      & 0–30\,s & $0.538 \pm 0.237$ & $0.769 \pm 0.421$ \\
+      & 0--5\,s  & $0.731 \pm 0.317$ & $0.923 \pm 0.267$ \\
+      & 0--10\,s & $0.731 \pm 0.317$ & $0.846 \pm 0.361$ \\
+      & 0--30\,s & $0.538 \pm 0.237$ & $0.769 \pm 0.421$ \\
     \midrule
     Post-5\,s (5$\to$N)
-      & 5–30\,s & $0.231 \pm 0.317$ & $0.154 \pm 0.361$ \\
+      & 5--30\,s & $0.231 \pm 0.317$ & $0.154 \pm 0.361$ \\
     \midrule
     Post-10\,s (10$\to$N)
-      & 10–30\,s & $0.346 \pm 0.303$ & $0.192 \pm 0.369$ \\
+      & 10--30\,s & $0.346 \pm 0.303$ & $0.192 \pm 0.369$ \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:window} and Figure~\ref{fig:stage4} show the window-length results.
-The 0--5\,s prefix achieves the highest AUC (0.923) and performance degrades
-monotonically as the window extends; post-settling windows are substantially
-worse than equal-duration prefix windows at every length, with post-10\,s windows
-approaching random classification. The root cause is a data-quality confound rather
-than a clinical finding: patients S-02, S-03, and S-04 have genuine signal only in
-approximately the first 10 seconds, so post-settling feature vectors for these
-patients are uninformative constants. This confound prevents the experiment from
-cleanly separating settling effects from signal duration. These results should not
-be interpreted as evidence that shorter measurement windows are clinically superior.
+The 0--5\,s prefix has the highest AUC (0.923), while performance decreases as
+the window extends. Post-settling windows perform much worse, with post-10\,s
+classification near random. This is a data-quality confound, not a clinical
+finding. The raw audit shows that S-02, S-03, and S-04 contain valid IDC samples
+only through 10 seconds in both lesional and non-lesional traces. After
+forward-fill preprocessing, later samples in these six traces are mostly
+constant. The experiment therefore shows that the current dataset is most
+complete in the first 10 seconds, not that shorter measurements are clinically
+better.
 
 \subsection{Stage 5: Evaluation Expansion}\label{sec:stage5_results}
 
 \begin{table}[t]
-  \caption{Evaluation metrics — LinearSVC, fold-safe patient-baseline
+  \caption{Evaluation metrics for LinearSVC with fold-safe patient-baseline
            normalization, full 30\,s traces.}
   \label{tab:eval}
   \centering\small
@@ -474,7 +493,7 @@ be interpreted as evidence that shorter measurement windows are clinically super
     LOSO (13 folds, primary)
       & $0.654 \pm 0.231$
       & $0.462 \pm 0.444$
-      & — \\
+      & N/A \\
     GroupKFold ($n{=}5$)
       & $0.700 \pm 0.113$
       & $0.651 \pm 0.146$
@@ -485,18 +504,11 @@ be interpreted as evidence that shorter measurement windows are clinically super
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:eval} shows the evaluation results.
-The model correctly ranks lesional above non-lesional for all 13 held-out patients
-(pairwise ranking 13/13), directly supporting Todorov et al.'s intra-individual
-tracking claim: trained exclusively on other patients, the model reliably identifies
-which site is lesional for every unseen individual. LOSO threshold accuracy is 0.654,
-reflecting the inability to define a reliable population-wide decision boundary ---
-consistent with the inter-patient baseline variation observed in Stage 1.
-GroupKFold AUC (0.817) and pooled-LOSO AUC (0.775) provide honest discriminability
-estimates; their $\approx$0.04 gap is consistent with the negative bias of
-pooled-LOO AUC \cite{airola2011comparison}. The accuracy--AUC gap (0.654 vs.\ 1.000)
-provides evidence against data leakage: under oracle leakage, accuracy would also
-approach 1.0.
+The model correctly ranks the lesional site for all 13 held-out patients, directly
+supporting intra-individual tracking. LOSO threshold accuracy is lower (0.654),
+which reflects the lack of a reliable population-wide decision boundary. GroupKFold
+AUC (0.817) and pooled-LOSO AUC (0.775) provide additional discriminability checks.
+The accuracy--ranking gap also argues against simple data leakage.
 
 \subsection{Stage 6A: CNN Track A vs.\ SVM}\label{sec:stage6_results}
 
@@ -509,43 +521,28 @@ approach 1.0.
     \missingfig{\linewidth}{Stage 6 Track A: CNN vs SVM training curve + metric comparison}{python src/stage6\_cnn\_trackA.py}%
   }
   \caption{Stage 6 Track A. \textit{Top:} training vs.\ test accuracy per
-           LOSO fold (5 seeds; CNN-scratch and CNN-jitter). Small train–test
-           gap confirms no over-fitting. \textit{Bottom:} GKF AUC comparison
+           LOSO fold (5 seeds, CNN-scratch and CNN-jitter). Small train--test
+           gap confirms no overfitting. \textit{Bottom:} GKF AUC comparison
            (CNN-scratch, CNN-jitter, SVM reference).}
   \label{fig:stage6}
 \end{figure}
 
-Figure~\ref{fig:stage6} and Table~\ref{tab:cnn_trackB} show the Track A results.
-The CNN does not overfit: the train--test accuracy gap is 0.077 for CNN-scratch,
-well below the pre-registered 0.20 trigger threshold. GroupKFold AUC of 0.871
-edges above the SVM (0.822), and the jitter variant improves further to 0.889.
-The small margin over the SVM despite access to the full raw trace --- rather than
-six handcrafted features --- suggests both models converge to the same underlying
-representation. Global Average Pooling computes a weighted mean across the time
-dimension, so the CNN effectively rediscovers the mean capacitance level that ranks
-first in the Stage 2 Random Forest importance. Jitter augmentation offers only
-marginal improvement (0.018 GKF AUC) because there is no waveform complexity to
-regularize: the discriminative signal is a level difference, not a shape.
+The CNN-scratch train--test accuracy gap is 0.077, below the pre-registered 0.20
+overfitting trigger. Its GroupKFold AUC is 0.871, above the SVM reference (0.822).
+The jitter variant gives the highest GroupKFold AUC, increasing from 0.871 to
+0.889. This $\approx$0.018 gain is plausible but modest. Because the dominant
+signal is a level difference, Gaussian jitter likely discourages the CNN from
+memorizing exact fold-specific capacitance levels and encourages a smoother
+decision boundary around the mean-capacitance signal. It should therefore be
+interpreted as regularization of the same level-based representation, not as
+evidence that noise augmentation reveals a clinically meaningful waveform
+pattern.
 
 \subsection{Stage 6B: Transfer Learning (Track B)}\label{sec:stage6b_results}
 
-\begin{figure}[t]
-  \centering
-  % Upload results/stage6_cnn_trackB.png to Overleaf, or run src/stage6_cnn_trackB.py locally
-  \IfFileExists{results/stage6_cnn_trackB.png}{%
-    \includegraphics[width=\linewidth]{results/stage6_cnn_trackB.png}%
-  }{%
-    \missingfig{\linewidth}{Stage 6 Track B: transfer CNN vs.\ Track A + SVM}{python src/stage6\_cnn\_trackB.py}%
-  }
-  \caption{Stage 6 Track B: self-supervised pretrained CNN (WESAD EDA, frozen
-           conv) vs.\ Track A baselines. GKF AUC 0.827 falls below CNN-scratch
-           (0.871) and CNN-jitter (0.889), indicating that EDA pretraining does
-           not improve IDC classification at $N{=}26$.}
-  \label{fig:stage6b}
-\end{figure}
 
-\begin{table}[t]
-  \caption{Full model comparison — Stages 6A and 6B. Values are mean$\pm$std
+\begin{table*}[t]
+  \caption{Full model comparison for Stages 6A and 6B. Values are mean$\pm$std
            over 5 random seeds.  Track B GKF AUC (0.827) falls below both
            Track A variants despite domain-adjacent pretraining.}
   \label{tab:cnn_trackB}
@@ -570,107 +567,127 @@ regularize: the discriminative signal is a level difference, not a shape.
       & $0.827 \pm 0.022$
       & $0.773 \pm 0.008$ \\
     SVM (ref.)
-      & —
+      & N/A
       & 0.769
       & 0.822
       & 0.781 \\
     \bottomrule
-    \multicolumn{5}{l}{\footnotesize Track B LOSO rank = $0.985 \pm 0.031$; Train–test gap = 0.011.} \\
+    \multicolumn{5}{l}{\footnotesize Track B LOSO rank = $0.985 \pm 0.031$, Train-test gap = 0.011.} \\
   \end{tabular}
-\end{table}
+\end{table*}
 
-Table~\ref{tab:cnn_trackB} and Figure~\ref{fig:stage6b} show the full four-model
-comparison. The transfer CNN (Track B) achieves GKF AUC 0.827, above the SVM (0.822)
-but below both from-scratch variants (0.871 and 0.889). The train--test gap of 0.011
-confirms that the frozen encoder is stable, but the pretrained features offer no
-discrimination advantage over features learned directly from the IDC data. Across
-all models, jitter augmentation (Track A) achieves the highest GKF AUC (0.889);
-neither transfer learning nor jitter changes the qualitative conclusion that the
-discriminative signal is the per-site mean capacitance level.
+The transfer CNN reaches GroupKFold AUC 0.827, slightly above the SVM but below
+both from-scratch CNN variants. Its train-test gap is only 0.011, so the issue is
+not overfitting. Rather, the frozen EDA-pretrained encoder does not provide a better
+IDC representation. Across all models, the central signal remains per-site mean
+capacitance.
 
 % ============================================================
 \section{Discussion}\label{sec:discussion}
 
-\subsection{Interpreting the LOSO AUC}
-With exactly one lesional and one non-lesional test sample per LOSO fold,
-\texttt{roc\_auc\_score} can only return 0 (incorrect ranking) or 1 (correct
-ranking), so the mean across 13 folds equals a pairwise ranking accuracy, not a
-graded ROC area. ``LOSO AUC 1.000'' means the model ranked lesional above
-non-lesional for every held-out patient --- a meaningful finding --- but it cannot
-be compared to AUC values computed over larger test sets in the literature.
-Genuine discriminability is measured by GroupKFold AUC (0.822 for the SVM, 4--6
-test samples per fold) and pooled-LOSO AUC (0.775). The accuracy--AUC gap (0.654
-vs.\ 1.000) provides evidence against oracle data leakage: if training data were
-contaminated with test-patient information, accuracy would also approach 1.0. The
-absence of leakage was further verified programmatically: in 0 of 13 LOSO folds
-did the held-out patient's data contribute to its own normalization baseline.
-
 \subsection{Why the CNN Ties the SVM}
-The most informative result in Stage 6 is not that the CNN edges the SVM, but why
-the margin is so small despite the CNN having access to the full raw signal rather
-than six handcrafted features. Global Average Pooling reduces the 1D feature map
-to a scalar per channel by averaging across time, effectively computing a weighted
-mean of the trace. The CNN therefore converges to the same representation as the
-SVM's top feature (trace mean), learned end-to-end rather than engineered. A model
-that sees strictly more information yet only marginally exceeds a simpler model
-using mean capacitance alone is strong evidence that the discriminative signal in
-this corpus is a level difference, not a temporal pattern. Any architecture with an
-implicit or explicit mean-pooling operation will likely reach the same performance
-ceiling on this dataset.
+The main Stage 6 result is the small gap between the CNN and the feature-based
+SVM. Global Average Pooling averages the learned 1D feature maps over time, so
+the CNN can easily reproduce a mean-level representation. Because a model with
+the full raw trace only slightly outperforms a model with six summary features,
+the useful signal in this corpus appears to be a level difference rather than a
+temporal pattern. Architectures with implicit or explicit mean pooling are likely
+to reach a similar ceiling on this dataset.
+
 
 \subsection{Data Quality Confound}
-The window-length experiment cannot answer its intended question because a subset
-of traces contain forward-filled constants beyond approximately the first 10
-seconds. For patients S-02, S-03, and S-04 (and possibly others), any feature
-extracted from the post-10\,s portion of the trace is determined entirely by the
-last genuine sample, producing near-zero variance feature vectors. Post-settling
-windows yield near-random classification not because later samples carry no
-physiological signal, but because those samples simply do not exist for a
-substantial fraction of the dataset. Correctly interpreting the settling analysis
-would require first identifying which patients have complete 30-second genuine
-signals, then restricting the comparison to those patients only. This is left as
-future work.
+The window-length experiment is limited by a specific data-completeness artifact
+in the IDC sensor files. The raw CSV audit shows that exactly three patients,
+S-02, S-03, and S-04, have valid IDC sensor values only through 10 seconds in
+both lesional and non-lesional recordings. The entries from 11 to 30 seconds are
+missing in the raw files. After forward-fill preprocessing, the post-10 s region
+for these six traces becomes artificially constant.
 
-\subsection{Limitations}
-Several limitations bound the scope of these findings. At $N{=}13$ patients,
-fold-to-fold variance in LOSO evaluation is very high (accuracy std 0.231); any
-reported mean metric could shift substantially with a small change in the patient
-sample, and all results should be treated as indicative rather than definitive.
-The Corneometer correlation analysis (Stage 7) was not performed, leaving the
-relationship between IDC-derived features and established clinical skin hydration
-measures uncharacterized; TEWL measurements are excluded due to limited data
-availability. The TinyCNN architecture represents a single design point with no
-hyperparameter search. Track B used strictly frozen convolutional layers; a
-two-phase strategy (pretrain, then gradually unfreeze and fine-tune) was not
-explored and may yield a different outcome. Finally, the LOSO binary-fold AUC
-is not comparable to AUC values in multi-sample cross-validation studies and
-should not be cited as such.
+For this reason, the post-10 s window result should not be interpreted as
+evidence that late IDC measurements are physiologically uninformative. Instead,
+it shows that late-window classification is unreliable when part of the dataset
+contains missing values that are converted into flat repeated segments. The
+stronger conclusion is that the usable signal in the current dataset is
+concentrated in the first 10 seconds because those samples are complete across
+all 26 IDC traces. A future analysis should repeat the window-length experiment
+after either removing incomplete traces or recollecting full 30-second IDC
+recordings for S-02, S-03, and S-04.
+
 
 \subsection{Why Transfer Learning Did Not Help}
-Track B GKF AUC (0.827) falls below the from-scratch CNN (0.871) despite pretraining
-on a domain-adjacent 1D skin signal. The most plausible explanation is a fundamental
-sensor physics mismatch: EDA measures ionic conductance of eccrine sweat glands,
-while IDC capacitance measures dielectric permittivity of the stratum corneum
-barrier. Both are 1\,Hz skin-surface measurements, but their signal dynamics,
-amplitude scales, and physiological drivers differ substantially. The self-supervised
-reconstruction objective encourages the encoder to capture EDA-specific low-frequency
-drift and motion artifacts that are not discriminative in IDC capacitance traces.
-The from-scratch CNN, unconstrained by any prior signal representation, converges
-directly to the IDC mean-level feature. Freezing the conv layers prevents this
-adaptation. Future work could explore two-phase transfer (pretrain then unfreeze),
-or use a domain-closer pretraining source if a larger IDC-specific dataset becomes
-available.
+The weak transfer-learning result is unlikely to be explained only by raw
+amplitude mismatch. In Track B, WESAD EDA windows are globally z-scored before
+MSE autoencoder pretraining, and IDC traces are standardized within each
+evaluation fold before downstream classification. However, these normalization
+steps do not remove the deeper modality mismatch. EDA measures skin conductance
+linked partly to eccrine sweat activity, while IDC measures capacitance or
+permittivity-related response at the stratum corneum barrier. Their physical
+meaning, amplitudes, temporal dynamics, and likely artifacts differ.
+
+Track B also freezes the pretrained convolutional encoder. If the autoencoder
+learns EDA-specific drift or artifact structure, the frozen encoder cannot adapt
+fully to the IDC target task. Since the IDC classification signal is dominated by
+a simple level difference, pretrained EDA waveform features provide little
+advantage over a CNN trained directly on the IDC traces. Future work could test
+unfrozen fine-tuning or pretraining on a larger IDC-specific source dataset.
+
+
+
+\subsection{Clinical Interpretation}
+The strongest result of this study is not population-level diagnosis but
+within-patient ranking. In every patient, the non-lesional site has higher mean
+capacitance than the lesional site, and the best fold-safe models largely
+preserve this ordering for held-out patients. This suggests that IDC sensing is
+better suited for personalized monitoring than for a universal diagnostic
+threshold. A practical wearable workflow would compare a patient's current skin
+sites against the same patient's paired or prior measurements rather than
+classify each trace against a fixed population cutoff.
+
+This distinction matters because AD severity and skin capacitance are
+heterogeneous across patients. Skin thickness, hydration, sensor contact, and
+baseline barrier properties can shift absolute capacitance. These factors make a
+single cutoff fragile at small sample size. Repeated within-patient IDC
+measurements could still be useful for tracking flare progression, treatment
+response, or recovery of the skin barrier, but that use case requires complete
+recordings and larger longitudinal validation.
+
+\subsection{Limitations}
+Several limitations bound these findings. The dataset has only 13 patients, so
+LOSO fold-to-fold variance is high and all metrics should be treated as
+indicative. Six of the 26 IDC traces contain missing post-10 s samples, which
+limits conclusions about the optimal contact-window duration. The Corneometer
+correlation analysis was not performed, leaving the relationship between IDC
+features and established hydration measurements uncharacterized. TEWL
+measurements are excluded because of limited data availability. TinyCNN is one
+architecture without a hyperparameter search. Track B uses frozen convolutional
+layers only, so a two-phase pretrain-then-fine-tune strategy may produce
+different results. Finally, LOSO binary-fold AUC is not comparable to AUC values
+from ordinary multi-sample cross-validation.
 
 % ============================================================
 \section{Conclusion}\label{sec:conclusion}
-This study demonstrates a proof-of-concept machine learning pipeline capable of distinguishing lesional from non-lesional skin in AD patients using highly constrained wearable IDC sensor data. By replicating established findings that non-lesional capacitance consistently exceeds lesional capacitance at an individual level, we confirm that a single population-wide decision boundary is ineffective due to significant baseline variations across patients. Instead, intra-individual tracking proves highly reliable: a baseline LinearSVC model successfully ranked lesional severity correctly for 13 out of 13 held-out patients, achieving a GroupKFold AUC of 0.822.  While end-to-end deep learning via a 1D CNN marginally outperformed the traditional statistical approach (GKF AUC 0.871), an analysis of its architecture confirms that the discriminative signal lies almost entirely in the mean capacitance level rather than in intricate temporal dynamics. Furthermore, efforts to mitigate data scarcity through self-supervised transfer learning on domain-adjacent EDA signals proved unsuccessful (GKF AUC 0.827), highlighting how the physical gap between measuring eccrine sweat conductance versus stratum corneum permittivity limits knowledge transfer. Our analysis of measurement duration also exposed critical dataset artifacts, emphasizing the need for rigorous data hygiene in future wearable studies to prevent confounding results. Ultimately, while this work validates the potential of continuous IDC monitoring for personalized AD tracking, transitioning from proof-of-concept to robust clinical deployment will require significantly larger, artifact-free datasets.
+This report presents a proof-of-concept pipeline for classifying lesional and
+non-lesional AD skin from a severely limited IDC wearable dataset. The replication
+stage confirms that non-lesional capacitance exceeds lesional capacitance within
+each patient, but patient baselines vary enough to make a single population-wide
+threshold unreliable. A LinearSVC using six raw-trace statistical features ranks
+the lesional site correctly for all 13 held-out patients and achieves GroupKFold
+AUC 0.822. A compact 1D CNN improves GroupKFold AUC to 0.871, but its small margin
+over the SVM suggests that the useful signal is mainly mean capacitance rather
+than temporal waveform structure. Transfer learning from WESAD EDA reaches
+GroupKFold AUC 0.827, showing limited benefit because EDA and IDC measure
+different skin properties. The window-length experiment further shows that
+apparent short-window advantages are driven by missing post-10 s samples that
+become constant after forward-fill preprocessing. Overall,
+IDC sensing appears promising for personalized AD tracking, but robust clinical
+deployment will require larger, complete, artifact-controlled datasets.
 
 % ============================================================
 \begin{acks}
 AI tools (Claude) were used for concept explanation, literature search, code
-guidance, and report generalization. Experimental design, research questions,
-and scientific conclusions were determined by the author. All AI-generated
-code was reviewed, tested, and modified.
+guidance, and report editing. The experimental design, research questions, and
+scientific conclusions were determined by the author. All AI-generated code was
+reviewed, tested, and modified.
 \end{acks}
 
 % ============================================================
