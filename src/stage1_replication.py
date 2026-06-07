@@ -4,9 +4,6 @@ Stage 1: Replication of Todorov et al. Figure 9(a)
 Reproduces the lesional vs. non-lesional mean capacitance per patient as a
 grouped bar chart with ±1 std error bars across the 30-second trace window.
 
-Original (Fig9a_ScriptForPlotting.py) used a scatter/errorbar style; this
-replication uses grouped bars as requested while preserving the same colour
-scheme, axis labels, and data treatment.
 """
 
 from pathlib import Path

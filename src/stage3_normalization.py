@@ -4,32 +4,6 @@ Stage 3: Normalization Comparison
 Compares five normalization strategies using LinearSVC and the six Stage 2
 handcrafted features, under TWO patient-aware CV schemes plus a pooled estimate:
 
-  - LOSO (13 folds): kept for accuracy/F1 and the pairwise-ranking story. Its
-    per-fold AUC is degenerate (each fold has exactly 1 lesional + 1 non-lesional
-    test trace, so fold AUC is binary 0/1) -> reported as "pairwise ranking", not AUC.
-  - GroupKFold (n=5): 2-3 patients per fold (4-6 test traces) so per-fold AUC is
-    non-degenerate. This is the headline discriminability metric.
-  - Pooled-LOSO AUC: one AUC over all 26 LOSO out-of-fold scores. Uses every
-    sample but carries a mild negative bias (Airola et al. 2011), so it reads
-    slightly below GroupKFold; the two together bracket the true discriminability.
-
-Why this matters for the project: the motivation is generalization under data
-scarcity (N=13). The degenerate LOSO AUC is a direct symptom of that scarcity;
-GroupKFold + pooled-LOSO recover an honest discriminability estimate without
-pretending the 2-sample folds give a real ROC.
-
-Methods:
-  - trace z-score: normalize each 30-point trace independently before feature
-    extraction. This forces feature mean=0 and std=1 for every trace.
-  - trace min-max: rescale each 30-point trace independently to [0, 1] before
-    feature extraction. This forces range=1 for every non-constant trace.
-  - feature z-score: extract raw features first, then fit StandardScaler on
-    training-fold features only and transform train/test features.
-  - robust scaler: same fold-safe feature-level approach using RobustScaler.
-  - training-only patient baseline normalization: learn one scalar baseline per
-    training patient inside each fold. Test patients use their learned training
-    baseline when available, otherwise the training global mean fallback.
-
 Outputs:
   results/stage3_normalization.png
   results/stage3_normalization_results.csv
@@ -111,19 +85,6 @@ def trace_minmax(trace):
 
 
 def fit_patient_baseline_normalizer(X_train, patient_train_ids, fallback="global_mean"):
-    """
-    Learns normalization statistics from training data only.
-
-    X_train: np.ndarray, shape (n_train_traces, trace_length)
-    patient_train_ids: array-like, shape (n_train_traces,)
-    fallback:
-        "global_mean" = mean of all training trace values
-        "median_patient_baseline" = median of training patient baselines
-
-    Returns:
-        baselines: dict mapping patient_id -> scalar baseline
-        fallback_baseline: scalar
-    """
     X_train = np.asarray(X_train, dtype=float)
     patient_train_ids = np.asarray(patient_train_ids)
 

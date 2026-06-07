@@ -1,15 +1,6 @@
 """
 Stage 6 — Track A: from-scratch 1D CNN vs the SVM baseline.
 
-Tests whether an end-to-end CNN on raw 30-pt traces can match the 6-feature SVM
-under the same patient-aware evaluation. CNN gets strictly more information than the
-SVM; if it still barely edges ahead, the discriminative signal is simple (level, not
-shape). Multi-seed (5) with a fresh model per fold controls for seed sensitivity at N=26.
-
-Two variants: baseline + jitter augmentation (training-only Gaussian noise). Train
-accuracy reported alongside test to distinguish overfit from underfit — both are
-informative but different diagnoses of the small-N bottleneck.
-
 Outputs:
   results/stage6_cnn_trackA.png
   results/stage6_cnn_trackA_metrics.csv

@@ -1,29 +1,6 @@
 """
 Stage 6 — Track B: self-supervised transfer learning from WESAD EDA.
 
-Pretraining task: train a 1D convolutional autoencoder (encoder = same two Conv1d
-layers as Track A's TinyCNN) on EDA windows from the WESAD dataset (15 subjects,
-wrist EDA at 4 Hz, downsampled to 1 Hz to match the IDC sequence length of 30 s).
-The pretraining objective is signal reconstruction (MSE) — purely self-supervised;
-no WESAD stress labels are used. This avoids source-target task mismatch when the
-downstream task (lesional/non-lesional classification) differs from stress detection
-(Fawaz et al., ECML 2019).
-
-Transfer: the pretrained encoder's weights are frozen, then a fresh Global-Average-
-Pool → Dropout(0.3) → Linear(16, 2) head is trained on the 26 IDC traces using the
-same LOSO + GroupKFold evaluation protocol as Track A.
-
-Framing: Track A (from-scratch CNN) already ties/beats the SVM (GKF AUC 0.871 vs
-0.822) without overfitting. Track B asks: does domain-adjacent pretraining push
-further still, or does it make no difference because the discriminative signal (mean
-capacitance level per site) is too simple to benefit from richer temporal
-initialization? Either outcome is informative.
-
-Expected result: given that the useful "feature" is the trace mean — something GAP
-directly averages — pretrained temporal features are unlikely to matter much.
-Transfer learning's advantage is typically on *shape/waveform* discrimination; here
-the task is essentially a level comparison, so Track B is predicted to tie Track A.
-
 Outputs:
   results/stage6_cnn_trackB.png    — GKF AUC bar chart + pretraining loss curve
   results/stage6_cnn_trackB_metrics.csv

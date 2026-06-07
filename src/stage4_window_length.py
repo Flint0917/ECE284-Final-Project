@@ -1,22 +1,7 @@
 """
 Stage 4: Expanded Signal Length Study
 
-Tests three window families to disentangle window duration from recording start time:
-
-  Prefix   (0→N):    how soon after sensor placement does the IDC offset appear?
-  Post-5s  (5→N):    skip 5 s of early skin-sensor settling; does a stable segment help?
-  Post-10s (10→N):   stricter 10-s settling exclusion.
-
-Normalization: z-score applied to each windowed segment independently (simulates real
-deployment where only the window is available; settling amplitude is removed but slope,
-skewness, and range still reflect within-window dynamics).
-
 Classifier: LinearSVC (C=1.0) under LOSO; 13 patients, one held out per fold.
-
-Interpretation:
-  Prefix ≈ post-settling at same duration → settling noise is not the bottleneck.
-  Post-settling >> prefix at same duration → early contact dynamics limit short windows.
-  Only long windows work → the IDC offset needs time to develop, not just stabilize.
 
 Outputs:
   results/stage4_window_length.png   3-column figure (Acc / F1 / AUC vs duration)
